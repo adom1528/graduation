@@ -44,6 +44,11 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <dependency>
+                <groupId>org.mybatis</groupId>
+                <artifactId>mybatis-spring</artifactId>
+                <version>3.0.3</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -54,5 +59,6 @@
             <version>${lombok.version}</version>
         </dependency>
     </dependencies>
+
 
 </project>
