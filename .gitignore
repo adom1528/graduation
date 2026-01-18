@@ -1,0 +1,90 @@
+# ========================
+# 1. 基础设施 & IDE 通用
+# ========================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+*.tmp
+# 忽略 IDEA 的模块文件，防止不同电脑路径冲突
+*.iml
+
+# ========================
+# 2. Java 后端 (Spring Boot / Maven)
+# ========================
+target/
+build/
+.mvn/
+.gradle/
+*.class
+*.jar
+*.war
+# 忽略 Maven 包装器 (如果你打算统一用本地 Maven，可以忽略这个)
+mvnw
+mvnw.cmd
+
+# ========================
+# 3. Qt C++ 客户端 (CMake + Ninja + MinGW)
+# ========================
+# Qt Creator 用户配置
+*.user
+*.user.*
+
+# 构建目录 (各种可能的命名习惯)
+cmake-build-*/
+build/
+bin/
+lib/
+debug/
+release/
+
+# 编译中间产物
+CMakeFiles/
+CMakeCache.txt
+*.cmake
+Makefile
+Makefile*
+*.ninja
+*.stash
+
+# Qt 自动生成的源码 (UI文件转换的头文件，元对象文件等)
+# 防止意外在源码目录编译产生的垃圾
+ui_*.h
+moc_*.cpp
+qrc_*.cpp
+*.pro.user
+
+# 二进制可执行文件
+*.exe
+*.dll
+*.so
+*.dylib
+*.o
+*.obj
+
+# ========================
+# 4. Web 端 (Vue 3 + Node)
+# ========================
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-error.log*
+yarn.lock
+package-lock.json
+# (注：package-lock.json 通常建议保留以锁定版本，但在个人毕设中，为了避免系统间差异报错，忽略也可以，看你习惯。推荐保留，这里暂不忽略)
+.eslintcache
+
+# ========================
+# 5. Docker 中间件数据 (绝对不能提交！！！)
+# ========================
+# 对应 docker-compose.yml 里的挂载路径
+middleware/mysql/data/
+middleware/mysql/logs/
+middleware/redis/data/
+middleware/rabbitmq/data/
+
+# 个人日志
+资料/

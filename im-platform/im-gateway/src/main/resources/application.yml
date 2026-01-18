@@ -1,0 +1,25 @@
+server:
+  port: 9000  # 网关统一占用 9000 端口
+
+spring:
+  application:
+    name: im-gateway  # 服务名称，注册到 Nacos 用的名字
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848 # Nacos 的地址
+      config:
+        import-check:
+          enabled: false # 关闭配置导入检查（暂时不用配置中心，简化开发）
+    gateway:
+      discovery:
+        locator:
+          enabled: true # 开启基于服务发现的路由（以后可以直接通过服务名访问）
+          lower-case-service-id: true
+      # 跨域配置 (CORS)：为了让 Web 端能访问接口，这一步必不可少！
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"

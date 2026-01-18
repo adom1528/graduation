@@ -1,0 +1,21 @@
+server:
+  port: 9001 # 认证服务占用 9001
+
+spring:
+  application:
+    name: im-auth
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 重点：这里填 localhost:8800，库名 im_core
+    url: jdbc:mysql://localhost:8800/im_core?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+
+# MyBatis Plus 配置 (打印 SQL 日志，方便调试)
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
