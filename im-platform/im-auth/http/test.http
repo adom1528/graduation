@@ -1,0 +1,29 @@
+### 变量设置 (可选，方便以后改)
+@host = http://localhost:9001
+
+# ==========================================
+# 场景 1: 正常注册一个新用户
+# ==========================================
+POST {{host}}/auth/register
+Content-Type: application/x-www-form-urlencoded
+
+username=gemini_user&password=123456
+
+###
+
+# ==========================================
+# 场景 2: 再次注册相同的用户 (预期报错)
+# ==========================================
+POST {{host}}/auth/register
+Content-Type: application/x-www-form-urlencoded
+
+username=gemini_user&password=123456
+
+###
+# ==========================================
+# 场景 3: 用户登录 (获取 Token)
+# ==========================================
+POST {{host}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=gemini_user&password=123456

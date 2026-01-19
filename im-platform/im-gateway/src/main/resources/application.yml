@@ -1,22 +1,29 @@
 server:
-  port: 9000  # 网关统一占用 9000 端口
+  port: 9000
 
 spring:
   application:
-    name: im-gateway  # 服务名称，注册到 Nacos 用的名字
+    name: im-gateway
   cloud:
     nacos:
       discovery:
-        server-addr: localhost:8848 # Nacos 的地址
+        server-addr: localhost:8848
       config:
         import-check:
-          enabled: false # 关闭配置导入检查（暂时不用配置中心，简化开发）
+          enabled: false
     gateway:
       discovery:
         locator:
-          enabled: true # 开启基于服务发现的路由（以后可以直接通过服务名访问）
+          enabled: true # 开启自动路由 (让 /im-auth/xxx 能自动转发)
           lower-case-service-id: true
-      # 跨域配置 (CORS)：为了让 Web 端能访问接口，这一步必不可少！
+      # --- 新增的部分开始 ---
+      routes:
+        - id: im-websocket             # 路由ID，随便起
+          uri: ws://localhost:9003     # 转发目标：直接指向 Netty 的 9003 端口
+          predicates:
+            - Path=/im/** # 规则：只要路径是以 /im 开头的
+      # --- 新增的部分结束 ---
+
       globalcors:
         cors-configurations:
           '[/**]':

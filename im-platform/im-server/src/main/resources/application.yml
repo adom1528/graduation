@@ -1,0 +1,16 @@
+server:
+  port: 9002 # Spring Boot 的 HTTP 端口 (Gateway:9000, Auth:9001, IM:9002)
+
+spring:
+  application:
+    name: im-server # 注册到 Nacos 的名字
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+
+# 自定义配置：Netty 的 WebSocket 端口
+im:
+  server:
+    port: 9003           # 真正聊天的端口
+    websocket-path: /im  # WebSocket 的访问路径，如 ws://localhost:9003/im
