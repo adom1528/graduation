@@ -31,7 +31,11 @@ public class WebSocketChannelInitializer extends ChannelInitializer<SocketChanne
 
         // 4. WebSocket 协议处理器 (核心！)
         // 它负责处理握手(Handshake)、Ping/Pong、Close 等繁琐细节
-        pipeline.addLast(new WebSocketServerProtocolHandler(webSocketPath));
+        //pipeline.addLast(new WebSocketServerProtocolHandler(webSocketPath));
+        // 换成这个长参数的构造函数
+        // 参数含义: 路径, 子协议(null), 允许扩展(false), 最大帧长度(65536), 允许掩码不匹配(false), checkStartsWith(true)
+        // 最后的 true 是关键！它允许 /im?token=xxx 这种形式
+        pipeline.addLast(new WebSocketServerProtocolHandler(webSocketPath, null, false, 65536, false, true));
 
         // 5. 自定义业务处理器 (刚才写的那个工人)
         pipeline.addLast(new SimpleHandler());

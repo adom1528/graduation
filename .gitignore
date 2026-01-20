@@ -86,5 +86,5 @@ middleware/mysql/logs/
 middleware/redis/data/
 middleware/rabbitmq/data/
 
-# 个人日志
+# 6. 个人日志
 资料/
