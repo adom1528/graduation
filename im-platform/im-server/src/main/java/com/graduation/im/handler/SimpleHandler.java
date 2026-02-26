@@ -1,41 +1,68 @@
 package com.graduation.im.handler;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.graduation.im.entity.Message;
+import com.graduation.im.util.UserChannelCtxMap;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import lombok.extern.slf4j.Slf4j;
 
-import java.time.LocalDateTime;
-
-/**
- * 这是一个简单的处理器，专门处理文本消息 (TextWebSocketFrame)
- */
 @Slf4j
 public class SimpleHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
 
-    // 当客户端连接上来时触发
+    // Jackson 的 JSON 工具
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+
     @Override
-    public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        log.info("客户端连接成功: {}", ctx.channel().id());
+    protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame frame) throws Exception {
+        String text = frame.text();
+        log.info("收到原始消息: {}", text);
+
+        // 1. 解析 JSON
+        Message msg;
+        try {
+            msg = objectMapper.readValue(text, Message.class);
+        } catch (Exception e) {
+            log.error("JSON格式错误");
+            return;
+        }
+
+        // 2. 填充发送者信息 (从户籍室反查，或者从 AttributeKey 拿)
+        // 这里演示简单的反查：谁发的这条消息？
+        Long fromUserId = UserChannelCtxMap.getUserId(ctx.channel());
+        if (fromUserId == null) {
+            log.warn("发送者未登录，忽略");
+            ctx.close();
+            return;
+        }
+        msg.setFromUserId(fromUserId);
+
+        // 3. 路由转发 (单聊核心逻辑)
+        Long toUserId = msg.getToUserId();
+        Channel targetChannel = UserChannelCtxMap.getChannel(toUserId);
+
+        if (targetChannel != null && targetChannel.isActive()) {
+            // A. 对方在线 -> 直接转发
+            // 把对象转回 JSON 字符串发送
+            String jsonOutput = objectMapper.writeValueAsString(msg);
+            targetChannel.writeAndFlush(new TextWebSocketFrame(jsonOutput));
+            log.info("消息已转发给用户: {}", toUserId);
+        } else {
+            // B. 对方不在线
+            // 简单处理：给发送者回个信
+            String errorMsg = "对方(ID=" + toUserId + ")不在线";
+            ctx.channel().writeAndFlush(new TextWebSocketFrame(errorMsg));
+            log.info("消息转发失败: {}", errorMsg);
+        }
     }
 
-    // 当客户端断开连接时触发
+    // 连接断开时，记得把人从户籍室踢出去
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        log.info("客户端断开连接: {}", ctx.channel().id());
-    }
-
-    // 当收到消息时触发
-    @Override
-    protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame msg) throws Exception {
-        String text = msg.text();
-        log.info("收到消息: {}", text);
-
-        // 业务逻辑：原本应该转发给别人，现在我们先做一个“回声”测试
-        // 回复：[服务器时间] 你说的是: ...
-        String response = "[" + LocalDateTime.now() + "] Server received: " + text;
-
-        // 注意：Netty 中写数据必须封装成 Frame，不能直接写 String
-        ctx.channel().writeAndFlush(new TextWebSocketFrame(response));
+        UserChannelCtxMap.removeChannel(ctx.channel());
+        log.info("连接断开，已移除映射: {}", ctx.channel().id());
+        super.channelInactive(ctx);
     }
 }

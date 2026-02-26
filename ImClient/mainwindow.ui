@@ -39,7 +39,7 @@
       <string>登录</string>
      </property>
     </widget>
-    <widget class="QWidget" name="">
+    <widget class="QWidget" name="layoutWidget">
      <property name="geometry">
       <rect>
        <x>4</x>
@@ -94,7 +94,7 @@
        <x>10</x>
        <y>20</y>
        <width>251</width>
-       <height>241</height>
+       <height>211</height>
       </rect>
      </property>
      <property name="readOnly">
@@ -122,6 +122,19 @@
        <width>251</width>
        <height>51</height>
       </rect>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="editTargetId">
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>240</y>
+       <width>231</width>
+       <height>20</height>
+      </rect>
+     </property>
+     <property name="placeholderText">
+      <string>对方ID</string>
      </property>
     </widget>
    </widget>

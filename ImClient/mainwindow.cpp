@@ -100,26 +100,64 @@ void MainWindow::onConnected()
     ui->textLog->append(">> 服务器连接成功！");
 }
 
-// 收到消息 (服务器的回声)
+// 收到消息
 void MainWindow::onTextMessageReceived(QString message)
 {
-    // 显示在日志框里
-    ui->textLog->append(message);
+    // 尝试解析 JSON
+    QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
+
+    if (!doc.isNull() && doc.isObject()) {
+        // --- 是正常的聊天消息 ---
+        QJsonObject obj = doc.object();
+
+        // 提取信息
+        // 注意：后端 Long 转成 JSON 可能是数字，Qt 解析时要注意
+        // 建议后端 Message 里 fromUserId 最好是 String 类型兼容性更好，或者这里用 toVariant().toLongLong()
+        long long fromUid = obj["fromUserId"].toVariant().toLongLong();
+        QString content = obj["content"].toString();
+
+        QString time = QDateTime::currentDateTime().toString("HH:mm:ss");
+        ui->textLog->append(QString("[%1] 用户%2: %3")
+                                .arg(time)
+                                .arg(fromUid)
+                                .arg(content));
+    } else {
+        // --- 可能是系统消息 (比如“对方不在线”这种纯文本) ---
+        ui->textLog->append(">> 系统: " + message);
+    }
 }
 
 // 发送按钮点击
 void MainWindow::onSendClicked()
 {
-    QString msg = ui->editMsg->text().trimmed();
-    if (msg.isEmpty()) return;
+    QString msgContent = ui->editMsg->text().trimmed();
+    QString targetIdStr = ui->editTargetId->text().trimmed();
 
-    // 发送给服务器
-    webSocket->sendTextMessage(msg);
+    if (msgContent.isEmpty() || targetIdStr.isEmpty()) {
+        QMessageBox::warning(this, "提示", "请输入内容和对方ID");
+        return;
+    }
+
+    // --- 构造 JSON ---
+    QJsonObject json;
+    json["toUserId"] = targetIdStr.toLongLong(); // 必须转成数字，匹配后端的 Long
+    json["content"] = msgContent;
+    json["type"] = 1; // 单聊
+
+    // 转成字符串
+    QJsonDocument doc(json);
+    QString jsonString = doc.toJson(QJsonDocument::Compact);
+
+    // 发送
+    webSocket->sendTextMessage(jsonString);
 
     // 清空输入框
     ui->editMsg->clear();
 
-    // 自己发的消息也先显示一下（模拟微信的效果）
+    // 本地显示 (模拟微信，自己发的立刻上屏)
     QString time = QDateTime::currentDateTime().toString("HH:mm:ss");
-    ui->textLog->append("[" + time + "] 我: " + msg);
+    ui->textLog->append(QString("[%1] 我 -> %2: %3")
+                            .arg(time)
+                            .arg(targetIdStr)
+                            .arg(msgContent));
 }
