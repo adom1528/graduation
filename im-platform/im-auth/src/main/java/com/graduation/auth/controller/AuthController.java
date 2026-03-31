@@ -34,4 +34,5 @@ public class AuthController {
             return Result.error(e.getMessage());
         }
     }
+
 }

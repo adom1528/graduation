@@ -1,0 +1,27 @@
+name: Example Config
+version: 1.0.0
+schema: v1
+
+# 定义可用的大模型
+# https://docs.continue.dev/customization/models
+models:
+  # 添加 Gemini 3.1 Pro 作为你的主力模型
+  - name: Gemini 3.1 Pro
+    provider: gemini  # 核心魔法1：伪装成 openai 提供商
+    # apiBase: https://generativelanguage.googleapis.com/v1beta/openai/  # 核心魔法2：指定 Google 的 OpenAI 兼容端点
+    model: gemini-3.1-pro-preview  # 依然填 Gemini 的模型代号
+    apiKey: AIzaSyC5Xb_FX3gFms_meKfcbVjez6O217-umTg # 请替换为你在 Google AI Studio 申请的真实 API Key
+    roles:
+      - chat
+      - edit
+      - apply
+
+  # 下面保留了你原本示例中的备用配置。如果不打算用，可以直接删除这部分
+  - uses: ollama/qwen2.5-coder-7b
+  - uses: anthropic/claude-4-sonnet
+    with:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+# 为你的 Monorepo 定制的专属防幻觉规则（替代旧版 config.json 的 systemMessage）
+rules:
+  - "You are an expert full-stack developer. Backend context: JDK 21, Spring Boot 3, MyBatis-Plus. Always use modern Java features (Records, Switch expressions) and Jakarta EE namespaces. Frontend context: C++17, Qt 6.10, CMake. Always use modern C++17 features, smart pointers, and Qt 6's new signal-slot syntax (pointer to member function). Do not use Qt 5 legacy macros like SIGNAL() and SLOT()."
