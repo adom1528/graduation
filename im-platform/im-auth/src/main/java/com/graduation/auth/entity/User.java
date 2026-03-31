@@ -15,7 +15,7 @@ public class User {
      * ASSIGN_ID 代表使用 MyBatis Plus 自带的雪花算法生成 ID
      * 对应数据库的 BIGINT
      */
-    @TableId(type = IdType.ASSIGN_ID)
+    @TableId(type = IdType.ASSIGN_ID) // mybatis-plus内置的雪花算法id
     private Long id;
 
     /**

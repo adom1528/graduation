@@ -7,7 +7,7 @@
 POST {{host}}/im-auth/auth/register
 Content-Type: application/x-www-form-urlencoded
 
-username=userA&password=123456
+username=zl&password=12345
 
 ###
 
@@ -32,13 +32,44 @@ username=gemini_user&password=123456
 POST {{host}}/im-auth/auth/login
 Content-Type: application/x-www-form-urlencoded
 
-username=ls&password=12345
+username=zs&password=12345
 
 ###
-# 测试好友列表
+# 测试好友列表（zs的）
 GET {{host}}/im-auth/friend/list
 Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjIzMzY2ODM5MDA5MzAsInVzZXJuYW1lIjoienMiLCJzdWIiOiJ6cyIsImlhdCI6MTc3NDkyOTY3NSwiZXhwIjoxNzc1MDE2MDc1fQ.0nI5P9XC8sFpWcNtE5XUK4J0qEf-V-qvo2rIMfeVxRo
 
 ###
+# 测试好友列表（ls的）
 GET {{host}}/im-auth/friend/list
 Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjcwNTU1MzU5NzIzNTMsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NDkzMDg3MSwiZXhwIjoxNzc1MDE3MjcxfQ.EYDSsNOxORRXG-nEZ1gbWs1Kj8y4f1c-_8_cA1UVD-o
+
+###
+# 测试搜寻功能
+GET {{host}}/im-auth/friend/search?username=ww
+# Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjIzMzY2ODM5MDA5MzAsInVzZXJuYW1lIjoienMiLCJzdWIiOiJ6cyIsImlhdCI6MTc3NDkyOTY3NSwiZXhwIjoxNzc1MDE2MDc1fQ.0nI5P9XC8sFpWcNtE5XUK4J0qEf-V-qvo2rIMfeVxRo
+
+###
+# 测试添加好友
+POST {{host}}/im-auth/friend/add
+# ls加ww
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjcwNTU1MzU5NzIzNTMsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NDk1OTUyMiwiZXhwIjoxNzc1MDQ1OTIyfQ.FahSvwlIPfX41QNAdqSTse8hwNsL_UN8ofHKwi5VjeM
+Content-Type: application/x-www-form-urlencoded
+
+targetUserId=2038888113604734977
+
+###
+POST {{host}}/im-auth/friend/add
+# ls加zs
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjcwNTU1MzU5NzIzNTMsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NDk1OTUyMiwiZXhwIjoxNzc1MDQ1OTIyfQ.FahSvwlIPfX41QNAdqSTse8hwNsL_UN8ofHKwi5VjeM
+Content-Type: application/x-www-form-urlencoded
+
+targetUserId=2038822336683900930
+
+###
+POST {{host}}/im-auth/friend/add
+# zs加ww
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjIzMzY2ODM5MDA5MzAsInVzZXJuYW1lIjoienMiLCJzdWIiOiJ6cyIsImlhdCI6MTc3NDk1OTkzNiwiZXhwIjoxNzc1MDQ2MzM2fQ.3WogWB8ReBF36jr3BtP4pEp_dehT5hPo47v_CSiiDPg
+Content-Type: application/x-www-form-urlencoded
+
+targetUserId=2038888113604734977
