@@ -2,6 +2,8 @@
 #include "./ui_mainwindow.h"
 #include <QUrlQuery>
 #include <QDateTime> // 用于显示时间
+#include <QJsonArray>
+#include <QDebug>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -20,18 +22,34 @@ MainWindow::MainWindow(QWidget *parent)
     webSocket = new QWebSocket();
 
     // 4. 信号槽连接
-    connect(ui->btnLogin, &QPushButton::clicked, this, &MainWindow::onLoginClicked);
-    connect(ui->btnSend, &QPushButton::clicked, this, &MainWindow::onSendClicked);
+    connect(ui->btnLogin, &QPushButton::clicked, this, &MainWindow::onLoginClicked); // 绑定登录按钮
+    connect(ui->btnRegister, &QPushButton::clicked, this, &MainWindow::onRegisterClicked);
+    connect(ui->btnSend, &QPushButton::clicked, this, &MainWindow::onSendClicked); // 绑定发送信息
+    connect(ui->listFriends, &QListWidget::itemClicked, this, &MainWindow::onFriendItemClicked); // 绑定好友列表点击事件
+    connect(ui->btnAddFriend, &QPushButton::clicked, this, &MainWindow::onBtnAddFriendClicked); // 添加好友按钮
 
     // WebSocket 信号
     connect(webSocket, &QWebSocket::connected, this, &MainWindow::onConnected);
     connect(webSocket, &QWebSocket::textMessageReceived, this, &MainWindow::onTextMessageReceived);
 }
 
+// 好友id获取
+void MainWindow::onFriendItemClicked(QListWidgetItem *item)
+{
+    // 从被点击的 item 中提取我们刚才悄悄藏进去的雪花 ID
+    QString friendId = item->data(Qt::UserRole).toString();
+    //qDebug() << friendId;
+
+    // 自动把它填入你的目标ID输入框
+    ui->editTargetId->setText(friendId);
+
+    // 日志里提示
+    ui->textLog->append(QString(">> 当前正在与【%1】聊天").arg(item->text()));
+}
+
 MainWindow::~MainWindow()
 {
     delete ui;
-    // webSocket 和 networkManager 指定了 parent，会自动回收，不手动 delete 也行
 }
 
 // 登录逻辑
@@ -67,8 +85,9 @@ void MainWindow::onLoginClicked()
             if (jsonObj.contains("code") && jsonObj["code"].toInt() == 200) {
                 // --- 登录成功核心逻辑 ---
 
-                // 1. 保存 Token
+                // 1. 保存 Token,拉取好友列表
                 this->myToken = jsonObj["data"].toString();
+                fetchFriendList();
 
                 // 2. 界面切换
                 ui->boxLogin->hide();
@@ -94,6 +113,60 @@ void MainWindow::onLoginClicked()
     });
 }
 
+//注册逻辑
+void MainWindow::onRegisterClicked()
+{
+    QString username = ui->editUsername->text().trimmed();
+    QString password = ui->editPassword->text().trimmed();
+
+    if (username.isEmpty() || password.isEmpty()) {
+        QMessageBox::warning(this, "提示", "注册账号和密码不能为空");
+        return;
+    }
+
+    // 防连点保护
+    ui->btnRegister->setEnabled(false);
+
+    // 1. 组装 URL（走网关）
+    QUrl url("http://localhost:9000/im-auth/auth/register");
+    QNetworkRequest request(url);
+
+    // 2. 设置表单提交格式
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    // 3. 组装表单参数
+    QUrlQuery params;
+    params.addQueryItem("username", username);
+    params.addQueryItem("password", password);
+    QByteArray data = params.toString(QUrl::FullyEncoded).toUtf8();
+
+    // 4. 发射 POST 请求
+    QNetworkReply *reply = networkManager->post(request, data);
+
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            QByteArray responseData = reply->readAll();
+            QJsonDocument jsonDoc = QJsonDocument::fromJson(responseData);
+            QJsonObject jsonObj = jsonDoc.object();
+
+            if (jsonObj.contains("code") && jsonObj["code"].toInt() == 200) {
+                // 注册成功！
+                QMessageBox::information(this, "注册成功", "账号注册成功，请直接点击登录！");
+                // 贴心小细节：不需要清空输入框，这样用户点了“确定”后直接点“登录”就能进系统，丝滑！
+            } else {
+                // 后端返回的业务错误（比如：用户名已存在）
+                QMessageBox::critical(this, "注册失败", jsonObj["message"].toString());
+            }
+        } else {
+            // 网络层面的错误（比如后端没开）
+            QMessageBox::critical(this, "网络错误", reply->errorString());
+        }
+
+        reply->deleteLater();
+        ui->btnRegister->setEnabled(true); // 恢复按钮
+    });
+}
+
 // WebSocket 连接成功
 void MainWindow::onConnected()
 {
@@ -111,15 +184,22 @@ void MainWindow::onTextMessageReceived(QString message)
         QJsonObject obj = doc.object();
 
         // 提取信息
-        // 注意：后端 Long 转成 JSON 可能是数字，Qt 解析时要注意
-        // 建议后端 Message 里 fromUserId 最好是 String 类型兼容性更好，或者这里用 toVariant().toLongLong()
-        long long fromUid = obj["fromUserId"].toVariant().toLongLong();
+        // 把提取出来的 fromUid 转成 QString，方便去字典里查
+        QString fromUidStr = obj["fromUserId"].toVariant().toString();
         QString content = obj["content"].toString();
 
+        // 🌟 K导师的偷梁换柱：去字典里查这个 ID 对应的名字
+        QString displayName = fromUidStr; // 默认先显示 ID
+        if (friendMap.contains(fromUidStr)) {
+            displayName = friendMap.value(fromUidStr); // 查到了！替换成昵称！
+        }
+
         QString time = QDateTime::currentDateTime().toString("HH:mm:ss");
-        ui->textLog->append(QString("[%1] 用户%2: %3")
+
+        // 注意看这里，把原来的 arg(fromUid) 换成了 arg(displayName)
+        ui->textLog->append(QString("[%1] %2: %3")
                                 .arg(time)
-                                .arg(fromUid)
+                                .arg(displayName)
                                 .arg(content));
     } else {
         // --- 可能是系统消息 (比如“对方不在线”这种纯文本) ---
@@ -155,9 +235,139 @@ void MainWindow::onSendClicked()
     ui->editMsg->clear();
 
     // 本地显示 (模拟微信，自己发的立刻上屏)
+    QString displayTargetName = targetIdStr; // 默认显示目标id
+    if (friendMap.contains(targetIdStr)) {
+        displayTargetName = friendMap.value(targetIdStr); // 替换名称
+    }
     QString time = QDateTime::currentDateTime().toString("HH:mm:ss");
     ui->textLog->append(QString("[%1] 我 -> %2: %3")
                             .arg(time)
-                            .arg(targetIdStr)
+                            .arg(displayTargetName)
                             .arg(msgContent));
+}
+
+// 拉取好友列表
+void MainWindow::fetchFriendList()
+{
+    // 1. 组装 URL（走网关）
+    QUrl url("http://localhost:9000/im-auth/friend/list");
+    QNetworkRequest request(url);
+
+    // 2. 挂载 Token（K导师核心划重点：Bearer 后面有空格！）
+    QString authHeader = "Bearer " + myToken;
+    request.setRawHeader("Authorization", authHeader.toUtf8());
+
+    // 3. 发射 GET 请求
+    QNetworkReply *reply = networkManager->get(request);
+
+    // 4. 处理响应
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            QByteArray responseData = reply->readAll();
+            QJsonDocument doc = QJsonDocument::fromJson(responseData);
+            QJsonObject rootObj = doc.object();
+
+            if (rootObj["code"].toInt() == 200) {
+                QJsonArray dataArray = rootObj["data"].toArray();
+                ui->listFriends->clear(); // 清空旧列表
+
+                // 遍历 JSON 数组
+                for (int i = 0; i < dataArray.size(); ++i) {
+                    QJsonObject friendObj = dataArray[i].toObject();
+
+                    // 提取昵称和雪花ID（注意雪花ID在JSON里由于太大，通常建议当字符串处理，Qt 用 toVariant().toString() 最稳）
+                    QString nickname = friendObj["nickname"].toString();
+                    QString friendId = friendObj["id"].toVariant().toString();
+                    friendMap.insert(friendId, nickname); // 好友信息存入字典
+
+                    // 创建列表项，显示昵称
+                    QListWidgetItem *item = new QListWidgetItem(nickname);
+                    // 把雪花 ID 作为“用户数据”悄悄绑定在这个 Item 上，前端看不见，但代码能拿到！
+                    item->setData(Qt::UserRole, friendId);
+
+                    ui->listFriends->addItem(item);
+                }
+            } else {
+                ui->textLog->append(">> 获取好友列表失败：" + rootObj["message"].toString());
+            }
+        }
+        reply->deleteLater();
+    });
+}
+
+// 实现添加好友
+void MainWindow::onBtnAddFriendClicked()
+{
+    QString targetUsername = ui->editSearchUser->text().trimmed();
+    if (targetUsername.isEmpty()) {
+        QMessageBox::warning(this, "提示", "请输入要添加的好友账号");
+        return;
+    }
+
+    // 禁用按钮防止狂点
+    ui->btnAddFriend->setEnabled(false);
+
+    // GET 搜索用户
+    QUrl searchUrl("http://localhost:9000/im-auth/friend/search");
+    QUrlQuery query;
+    query.addQueryItem("username", targetUsername);
+    searchUrl.setQuery(query);
+
+    QNetworkRequest searchReq(searchUrl);
+    searchReq.setRawHeader("Authorization", ("Bearer " + myToken).toUtf8());
+
+    QNetworkReply *searchReply = networkManager->get(searchReq);
+
+    connect(searchReply, &QNetworkReply::finished, this, [=]() {
+        if (searchReply->error() == QNetworkReply::NoError) {
+            QJsonDocument doc = QJsonDocument::fromJson(searchReply->readAll());
+            QJsonObject rootObj = doc.object();
+
+            if (rootObj["code"].toInt() == 200) {
+                // 搜到人了！提取他的雪花 ID
+                QString targetId = rootObj["data"].toObject()["id"].toVariant().toString();
+
+                // 第二发子弹：POST 添加好友
+                QUrl addUrl("http://localhost:9000/im-auth/friend/add");
+                QNetworkRequest addReq(addUrl);
+                addReq.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+                addReq.setRawHeader("Authorization", ("Bearer " + myToken).toUtf8());
+
+                QUrlQuery addParams;
+                addParams.addQueryItem("targetUserId", targetId);
+                QByteArray addData = addParams.toString(QUrl::FullyEncoded).toUtf8();
+
+                QNetworkReply *addReply = networkManager->post(addReq, addData);
+
+                connect(addReply, &QNetworkReply::finished, this, [=]() {
+                    if (addReply->error() == QNetworkReply::NoError) {
+                        QJsonDocument addDoc = QJsonDocument::fromJson(addReply->readAll());
+                        QJsonObject addRoot = addDoc.object();
+
+                        if (addRoot["code"].toInt() == 200) {
+                            QMessageBox::information(this, "成功", "添加好友成功！");
+                            ui->editSearchUser->clear(); // 清空输入框
+
+                            // 🌟 核心大招：静默刷新好友列表！
+                            fetchFriendList();
+                        } else {
+                            QMessageBox::critical(this, "添加失败", addRoot["message"].toString());
+                        }
+                    } else {
+                        QMessageBox::critical(this, "网络错误", "添加请求发送失败");
+                    }
+                    addReply->deleteLater();
+                    ui->btnAddFriend->setEnabled(true); // 恢复按钮
+                });
+
+            } else {
+                QMessageBox::critical(this, "搜索失败", rootObj["message"].toString());
+                ui->btnAddFriend->setEnabled(true);
+            }
+        } else {
+            QMessageBox::critical(this, "网络错误", "搜索请求发送失败");
+            ui->btnAddFriend->setEnabled(true);
+        }
+        searchReply->deleteLater();
+    });
 }
