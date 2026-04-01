@@ -23,6 +23,9 @@ public class WebSocketChannelInitializer extends ChannelInitializer<SocketChanne
     @Autowired
     private WebSocketTokenHandler webSocketTokenHandler;
 
+    @Autowired // 注入我们改造好的 Handler
+    private SimpleHandler simpleHandler;
+
     @Override
     protected void initChannel(SocketChannel ch) throws Exception {
         ChannelPipeline pipeline = ch.pipeline();
@@ -41,12 +44,9 @@ public class WebSocketChannelInitializer extends ChannelInitializer<SocketChanne
 
         // 4. WebSocket 协议处理器 (核心！)
         // 它负责处理握手(Handshake)、Ping/Pong、Close 等繁琐细节
-        //pipeline.addLast(new WebSocketServerProtocolHandler(webSocketPath));
-        // 注意：因为我们在 WebSocketTokenHandler 里已经把 URI 改回了 "/im" (去掉了?token=...)
-        // 所以这里不需要再设置 checkStartsWith(true) 了，用最普通的构造函数即可
         pipeline.addLast(new WebSocketServerProtocolHandler(webSocketPath));
 
         // 5. 自定义业务处理器 (刚才写的那个工人)
-        pipeline.addLast(new SimpleHandler());
+        pipeline.addLast(simpleHandler);
     }
 }

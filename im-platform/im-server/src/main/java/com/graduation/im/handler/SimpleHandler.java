@@ -8,12 +8,20 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import com.graduation.im.service.ChatMessageService;
 
 @Slf4j
+@Component // 交给 Spring 管理
+@io.netty.channel.ChannelHandler.Sharable // 允许被多个 Channel 共享
 public class SimpleHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
 
     // Jackson 的 JSON 工具
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    // 数据库服务注入
+    @Autowired
+    private ChatMessageService chatMessageService;
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame frame) throws Exception {
@@ -42,6 +50,8 @@ public class SimpleHandler extends SimpleChannelInboundHandler<TextWebSocketFram
         // 3. 路由转发 (单聊核心逻辑)
         Long toUserId = msg.getToUserId();
         Channel targetChannel = UserChannelCtxMap.getChannel(toUserId);
+        // 不管对方在不在，这句聊天记录必须永久存入数据库
+        chatMessageService.saveMessage(fromUserId, toUserId, msg.getContent());
 
         if (targetChannel != null && targetChannel.isActive()) {
             // A. 对方在线 -> 直接转发
@@ -52,9 +62,9 @@ public class SimpleHandler extends SimpleChannelInboundHandler<TextWebSocketFram
         } else {
             // B. 对方不在线
             // 简单处理：给发送者回个信
-            String errorMsg = "对方(ID=" + toUserId + ")不在线";
+            String errorMsg = "对方(ID=" + toUserId + ")不在线,但消息已存入数据库";
             ctx.channel().writeAndFlush(new TextWebSocketFrame(errorMsg));
-            log.info("消息转发失败: {}", errorMsg);
+            log.info("消息转发失败（不在线），但已存入数据库: {}", errorMsg);
         }
     }
 

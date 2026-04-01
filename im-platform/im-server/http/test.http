@@ -1,0 +1,13 @@
+### 变量设置 (可选，方便以后改)
+#网关端口(9000)
+@host = http://localhost:9000
+
+### 测试登录ls
+POST {{host}}/im-auth/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=ls&password=12345
+
+### 测试拉取历史聊天记录
+GET {{host}}/im-server/chat/history?friendId=2039190026355220482
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NTA1NDk1MywiZXhwIjoxNzc1MTQxMzUzfQ.I0_daUKzGCBK0l_IMT-J0mVvHUY_CCI2x6TtL0cN2aI

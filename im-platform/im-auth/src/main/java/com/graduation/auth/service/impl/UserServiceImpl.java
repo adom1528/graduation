@@ -7,15 +7,18 @@ import com.graduation.auth.entity.User;
 import com.graduation.auth.mapper.UserMapper;
 import com.graduation.auth.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
+    private static final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
     @Override
     public void register(String username, String password) {
         // 1. 检查用户名是否已存在
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+
         queryWrapper.eq("username", username);
         if (count(queryWrapper) > 0) {
             throw new RuntimeException("用户名已存在");
@@ -24,8 +27,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 2. 封装用户对象
         User user = new User();
         user.setUsername(username);
-        // TODO: 这里后面要加 BCrypt 加密，现在先明文
-        user.setPassword(password);
+        // 加密处理
+        String encodedPassword = encoder.encode(password);
+        user.setPassword(encodedPassword);
         user.setNickname("用户" + username); // 默认昵称
 
         // 3. 写入数据库
@@ -46,8 +50,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             throw new RuntimeException("用户不存在");
         }
 
-        // 3. 校验密码 (目前是明文对比，后面我们再加加密)
-        if (!user.getPassword().equals(password)) {
+        // 3. 校验密码 (加密对比)
+        if (!encoder.matches(password, user.getPassword())) {
             throw new RuntimeException("密码错误");
         }
 

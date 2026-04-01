@@ -7,7 +7,7 @@
 POST {{host}}/im-auth/auth/register
 Content-Type: application/x-www-form-urlencoded
 
-username=zl&password=12345
+username=ww&password=12345
 
 ###
 
@@ -26,45 +26,45 @@ username=ww&password=12345
 POST {{host}}/im-auth/auth/login
 Content-Type: application/x-www-form-urlencoded
 
-username=gemini_user&password=123456
+username=zs&password=12345
 ###
 
 POST {{host}}/im-auth/auth/login
 Content-Type: application/x-www-form-urlencoded
 
-username=zs&password=12345
+username=ls&password=12345
 
 ###
 # 测试好友列表（zs的）
 GET {{host}}/im-auth/friend/list
-Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjIzMzY2ODM5MDA5MzAsInVzZXJuYW1lIjoienMiLCJzdWIiOiJ6cyIsImlhdCI6MTc3NDkyOTY3NSwiZXhwIjoxNzc1MDE2MDc1fQ.0nI5P9XC8sFpWcNtE5XUK4J0qEf-V-qvo2rIMfeVxRo
+Authorization: eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwMjYzNTUyMjA0ODIsInVzZXJuYW1lIjoienMiLCJzdWIiOiJ6cyIsImlhdCI6MTc3NTAyMTgwOCwiZXhwIjoxNzc1MTA4MjA4fQ.NJVHKQrrqsLK-_czC2XNllc-JOQrotvuxcgiv-z_bgg
 
 ###
 # 测试好友列表（ls的）
 GET {{host}}/im-auth/friend/list
-Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjcwNTU1MzU5NzIzNTMsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NDkzMDg3MSwiZXhwIjoxNzc1MDE3MjcxfQ.EYDSsNOxORRXG-nEZ1gbWs1Kj8y4f1c-_8_cA1UVD-o
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NTAyMTg0MiwiZXhwIjoxNzc1MTA4MjQyfQ.YGOyowXfOjtHuv-naTfggVdiD_IY4YksgnqpCAX_j3M
 
 ###
 # 测试搜寻功能
-GET {{host}}/im-auth/friend/search?username=ww
+GET {{host}}/im-auth/friend/search?username=ls
 # Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjIzMzY2ODM5MDA5MzAsInVzZXJuYW1lIjoienMiLCJzdWIiOiJ6cyIsImlhdCI6MTc3NDkyOTY3NSwiZXhwIjoxNzc1MDE2MDc1fQ.0nI5P9XC8sFpWcNtE5XUK4J0qEf-V-qvo2rIMfeVxRo
 
 ###
 # 测试添加好友
 POST {{host}}/im-auth/friend/add
 # ls加ww
-Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjcwNTU1MzU5NzIzNTMsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NDk1OTUyMiwiZXhwIjoxNzc1MDQ1OTIyfQ.FahSvwlIPfX41QNAdqSTse8hwNsL_UN8ofHKwi5VjeM
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NTAyMTg0MiwiZXhwIjoxNzc1MTA4MjQyfQ.YGOyowXfOjtHuv-naTfggVdiD_IY4YksgnqpCAX_j3M
 Content-Type: application/x-www-form-urlencoded
 
-targetUserId=2038888113604734977
+targetUserId=2039190076783337474
 
 ###
 POST {{host}}/im-auth/friend/add
 # ls加zs
-Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjcwNTU1MzU5NzIzNTMsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NDk1OTUyMiwiZXhwIjoxNzc1MDQ1OTIyfQ.FahSvwlIPfX41QNAdqSTse8hwNsL_UN8ofHKwi5VjeM
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NTAyMTg0MiwiZXhwIjoxNzc1MTA4MjQyfQ.YGOyowXfOjtHuv-naTfggVdiD_IY4YksgnqpCAX_j3M
 Content-Type: application/x-www-form-urlencoded
 
-targetUserId=2038822336683900930
+targetUserId=2039190026355220482
 
 ###
 POST {{host}}/im-auth/friend/add
