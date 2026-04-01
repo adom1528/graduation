@@ -25,6 +25,7 @@ public:
 
 private:
     void fetchFriendList();// 拉去好友列表
+    void fetchChatHistory(QString friendId); // 拉取某个好友的记录
 
 private slots:
     // 登录按钮点击

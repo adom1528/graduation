@@ -33,18 +33,21 @@ MainWindow::MainWindow(QWidget *parent)
     connect(webSocket, &QWebSocket::textMessageReceived, this, &MainWindow::onTextMessageReceived);
 }
 
-// 好友id获取
+// 点击好友头像（目前是名字）
 void MainWindow::onFriendItemClicked(QListWidgetItem *item)
 {
-    // 从被点击的 item 中提取我们刚才悄悄藏进去的雪花 ID
+    // 1. 提取对方的雪花 ID
     QString friendId = item->data(Qt::UserRole).toString();
-    //qDebug() << friendId;
 
-    // 自动把它填入你的目标ID输入框
+    // 2. 填入输入框，方便发消息
     ui->editTargetId->setText(friendId);
 
-    // 日志里提示
-    ui->textLog->append(QString(">> 当前正在与【%1】聊天").arg(item->text()));
+    // 3. 切换聊天对象时，先把面板清空
+    ui->textLog->clear();
+    ui->textLog->append(QString(">> 正在拉取与【%1】的聊天记录...").arg(item->text()));
+
+    // 4. 呼叫刚才写好的函数，去后端搬运历史记录
+    fetchChatHistory(friendId);
 }
 
 MainWindow::~MainWindow()
@@ -369,5 +372,63 @@ void MainWindow::onBtnAddFriendClicked()
             ui->btnAddFriend->setEnabled(true);
         }
         searchReply->deleteLater();
+    });
+}
+
+// 点击好友后显示历史聊天记录
+void MainWindow::fetchChatHistory(QString friendId)
+{
+    // 1. 组装请求 URL
+    QUrl url("http://localhost:9000/im-server/chat/history");
+    QUrlQuery query;
+    query.addQueryItem("friendId", friendId);
+    url.setQuery(query);
+
+    QNetworkRequest request(url);
+    request.setRawHeader("Authorization", ("Bearer " + myToken).toUtf8());
+
+    // 2. 发射 GET 请求
+    QNetworkReply *reply = networkManager->get(request);
+
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            QByteArray responseData = reply->readAll();
+            QJsonDocument doc = QJsonDocument::fromJson(responseData);
+            QJsonObject rootObj = doc.object();
+
+            if (rootObj["code"].toInt() == 200) {
+                // 拿到历史记录数组！
+                QJsonArray dataArray = rootObj["data"].toArray();
+
+                // 3. 遍历渲染上屏
+                for (int i = 0; i < dataArray.size(); ++i) {
+                    QJsonObject msgObj = dataArray[i].toObject();
+
+                    QString fromId = msgObj["fromUserId"].toVariant().toString();
+                    QString content = msgObj["content"].toString();
+                    // 后端传过来的时间通常是 "2026-04-01T13:39:16"，把 T 换成空格变好看点
+                    QString createTime = msgObj["createTime"].toString().replace("T", " ");
+
+                    // 🌟 核心判断：这条消息是谁发的？
+                    QString displayName = "我";
+                    if (fromId == friendId) {
+                        // 如果是对方发的，去字典里把他的名字查出来！
+                        displayName = friendMap.contains(fromId) ? friendMap.value(fromId) : fromId;
+                    }
+
+                    // 格式化输出到面板上
+                    ui->textLog->append(QString("[%1] %2: %3")
+                                            .arg(createTime)
+                                            .arg(displayName)
+                                            .arg(content));
+                }
+                ui->textLog->append("---------------- 历史消息分割线 ----------------");
+            } else {
+                ui->textLog->append(">> 拉取历史记录失败：" + rootObj["message"].toString());
+            }
+        } else {
+            ui->textLog->append(">> 网络错误，无法拉取历史记录");
+        }
+        reply->deleteLater();
     });
 }
