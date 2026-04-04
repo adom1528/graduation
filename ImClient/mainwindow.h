@@ -10,6 +10,7 @@
 #include <QWebSocket>
 #include <QListWidget>
 #include <QMap>
+#include <QTimer>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -29,15 +30,18 @@ private:
 
 private slots:
     // 登录按钮点击
-    void onLoginClicked();
-    void onRegisterClicked();
+    void onLoginClicked(); // 登录
+    void onRegisterClicked(); // 注册
+    void onExitLoginClicked(); // 退出登录
     void onFriendItemClicked(QListWidgetItem *item); // 点击好友列表触发
     void onBtnAddFriendClicked(); // 点击添加好友
 
     // --- 新增 WebSocket 相关槽函数 ---
     void onConnected();                  // 连接成功时触发
+    void onDisconnected(); // 断开连接时出触发
     void onTextMessageReceived(QString message); // 收到消息时触发
     void onSendClicked();                // 点击发送按钮时触发
+    void onHeartbeatTimeout(); // 处理心跳超时的槽函数
 
 
 private:
@@ -48,5 +52,6 @@ private:
     QWebSocket *webSocket;
     QString myToken; // 存 Token 用
     QMap<QString, QString> friendMap; // 好友缓存字典（key: 雪花id， value: nickname）
+    QTimer *heartbeatTimer; // 心跳定时器指针
 };
 #endif // MAINWINDOW_H

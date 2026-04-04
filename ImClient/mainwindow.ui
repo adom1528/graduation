@@ -186,6 +186,19 @@
       <string>添加好友</string>
      </property>
     </widget>
+    <widget class="QPushButton" name="btnExitLogin">
+     <property name="geometry">
+      <rect>
+       <x>340</x>
+       <y>380</y>
+       <width>80</width>
+       <height>18</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>退出登录</string>
+     </property>
+    </widget>
    </widget>
   </widget>
  </widget>

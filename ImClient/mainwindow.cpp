@@ -21,16 +21,26 @@ MainWindow::MainWindow(QWidget *parent)
     // 3. 初始化 WebSocket
     webSocket = new QWebSocket();
 
+    // 初始化心跳定时器
+    heartbeatTimer = new QTimer(this);
+
     // 4. 信号槽连接
     connect(ui->btnLogin, &QPushButton::clicked, this, &MainWindow::onLoginClicked); // 绑定登录按钮
-    connect(ui->btnRegister, &QPushButton::clicked, this, &MainWindow::onRegisterClicked);
+    connect(ui->btnRegister, &QPushButton::clicked, this, &MainWindow::onRegisterClicked); // 绑定注册
+    connect(ui->btnExitLogin, &QPushButton::clicked, this, &MainWindow::onExitLoginClicked); //绑定退出登录
     connect(ui->btnSend, &QPushButton::clicked, this, &MainWindow::onSendClicked); // 绑定发送信息
     connect(ui->listFriends, &QListWidget::itemClicked, this, &MainWindow::onFriendItemClicked); // 绑定好友列表点击事件
     connect(ui->btnAddFriend, &QPushButton::clicked, this, &MainWindow::onBtnAddFriendClicked); // 添加好友按钮
+    connect(heartbeatTimer, &QTimer::timeout, this, &MainWindow::onHeartbeatTimeout); // 心跳检测
 
     // WebSocket 信号
     connect(webSocket, &QWebSocket::connected, this, &MainWindow::onConnected);
     connect(webSocket, &QWebSocket::textMessageReceived, this, &MainWindow::onTextMessageReceived);
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
 }
 
 // 点击好友头像（目前是名字）
@@ -48,11 +58,6 @@ void MainWindow::onFriendItemClicked(QListWidgetItem *item)
 
     // 4. 呼叫刚才写好的函数，去后端搬运历史记录
     fetchChatHistory(friendId);
-}
-
-MainWindow::~MainWindow()
-{
-    delete ui;
 }
 
 // 登录逻辑
@@ -170,15 +175,69 @@ void MainWindow::onRegisterClicked()
     });
 }
 
+// 退出登录
+void MainWindow::onExitLoginClicked() {
+    // ================= 1. 物理断开 =================
+    onDisconnected();
+
+    // ================= 2. 记忆消除 =================
+    // 清空身份令牌和内存里的好友字典，防止“串号”
+    myToken.clear();
+    friendMap.clear();
+
+    // ================= 3. 现场清理 =================
+    // 清空 UI 上的所有历史痕迹
+    ui->textLog->clear();           // 清空聊天面板
+    ui->listFriends->clear();       // 清空好友列表
+    ui->editTargetId->clear();      // 清空当前选中的聊天对象输入框
+    ui->editSearchUser->clear();    // 清空搜索框
+
+    // 贴心小细节：清空密码框，但保留账号框，方便用户下次快速重新登录
+    ui->editPassword->clear();
+
+    // ================= 4. 场景切换 =================
+    ui->boxChat->hide();
+    ui->boxLogin->show();
+}
+
 // WebSocket 连接成功
 void MainWindow::onConnected()
 {
     ui->textLog->append(">> 服务器连接成功！");
+    heartbeatTimer->start(30000); // 30秒发一次ping
+}
+
+// WebSocket 断开
+void MainWindow::onDisconnected() {
+    //断开心跳
+    if (heartbeatTimer->isActive()) {
+        heartbeatTimer->stop();
+    }
+    // 掐断 WebSocket 长连接
+    if (webSocket != nullptr && webSocket->isValid()) {
+        webSocket->close();
+    }
+    qDebug() << "webSocket断开";
+}
+
+// 发ping检测心跳
+void MainWindow::onHeartbeatTimeout()
+{
+    // 确保连接活着才发心跳
+    if (webSocket != nullptr && webSocket->isValid()) {
+        webSocket->sendTextMessage("ping");
+        qDebug() << "已发送心跳包: ping";
+    }
 }
 
 // 收到消息
 void MainWindow::onTextMessageReceived(QString message)
 {
+    if (message == "pong") {
+        // qDebug() << "收到服务器心跳回执: pong";
+        return;
+    }
+
     // 尝试解析 JSON
     QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
 
@@ -186,7 +245,38 @@ void MainWindow::onTextMessageReceived(QString message)
         // --- 是正常的聊天消息 ---
         QJsonObject obj = doc.object();
 
-        // 提取信息
+        // 提取信息类型
+        int type = obj["type"].toInt();
+
+        //拦截广播信息
+        if (type == 3) {
+            QString friendId = obj["userId"].toVariant().toString();
+            QString status = obj["content"].toString(); // "online" 或 "offline"
+
+            // 只有当这个人是我的好友时，我才去更新列表
+            if (friendMap.contains(friendId)) {
+                QString nickname = friendMap.value(friendId);
+
+                // 遍历 QListWidget，找到这个好友的格子并动态改色！
+                for (int i = 0; i < ui->listFriends->count(); ++i) {
+                    QListWidgetItem *item = ui->listFriends->item(i);
+                    // 判断绑定的 ID 是不是广播里的那个 ID
+                    if (item->data(Qt::UserRole).toString() == friendId) {
+                        if (status == "online") {
+                            item->setText(nickname + " [在线]");
+                            item->setForeground(QBrush(QColor(46, 139, 87))); // 变绿
+                            QFont font = item->font(); font.setBold(true); item->setFont(font);
+                        } else {
+                            item->setText(nickname + " [离线]");
+                            item->setForeground(QBrush(Qt::gray)); // 变灰
+                            QFont font = item->font(); font.setBold(false); item->setFont(font);
+                        }
+                        break; // 找到了就跳出循环
+                    }
+                }
+            }
+            return; //处理完直接返回
+        }
         // 把提取出来的 fromUid 转成 QString，方便去字典里查
         QString fromUidStr = obj["fromUserId"].toVariant().toString();
         QString content = obj["content"].toString();
@@ -281,14 +371,33 @@ void MainWindow::fetchFriendList()
                     // 提取昵称和雪花ID（注意雪花ID在JSON里由于太大，通常建议当字符串处理，Qt 用 toVariant().toString() 最稳）
                     QString nickname = friendObj["nickname"].toString();
                     QString friendId = friendObj["id"].toVariant().toString();
-                    friendMap.insert(friendId, nickname); // 好友信息存入字典
+                    bool isOnline = friendObj["isOnline"].toBool();
+
+                    QString displayText = nickname;
+                    if (isOnline) {
+                        displayText += "[在线]";
+                    } else {
+                        displayText += "[离线]";
+                    }
 
                     // 创建列表项，显示昵称
-                    QListWidgetItem *item = new QListWidgetItem(nickname);
+                    QListWidgetItem *item = new QListWidgetItem(displayText);
                     // 把雪花 ID 作为“用户数据”悄悄绑定在这个 Item 上，前端看不见，但代码能拿到！
                     item->setData(Qt::UserRole, friendId);
 
+                    if (isOnline) {
+                        // 在线状态：绿色
+                        item->setForeground(QBrush(QColor(43, 139, 87)));
+                        // 加粗字体
+                        QFont font = item->font();
+                        font.setBold(true);
+                        item->setFont(font);
+                    } else {
+                        item->setForeground(QBrush(Qt::gray));
+                    }
+
                     ui->listFriends->addItem(item);
+                    friendMap.insert(friendId, nickname); // 好友信息存入字典
                 }
             } else {
                 ui->textLog->append(">> 获取好友列表失败：" + rootObj["message"].toString());
@@ -351,7 +460,7 @@ void MainWindow::onBtnAddFriendClicked()
                             QMessageBox::information(this, "成功", "添加好友成功！");
                             ui->editSearchUser->clear(); // 清空输入框
 
-                            // 🌟 核心大招：静默刷新好友列表！
+                            // 静默刷新好友列表！
                             fetchFriendList();
                         } else {
                             QMessageBox::critical(this, "添加失败", addRoot["message"].toString());
@@ -432,3 +541,5 @@ void MainWindow::fetchChatHistory(QString friendId)
         reply->deleteLater();
     });
 }
+
+
