@@ -1,6 +1,7 @@
 package com.graduation.auth.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.graduation.auth.entity.FriendVO;
 import com.graduation.auth.mapper.FriendMapper;
 import com.graduation.auth.mapper.UserMapper;
@@ -8,12 +9,13 @@ import com.graduation.auth.service.FriendService;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.baomidou.mybatisplus.core.toolkit.IdWorker;
-
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import java.util.List;
 
+
 @Service
-public class FriendServiceImpl implements FriendService {
+public class FriendServiceImpl extends ServiceImpl<FriendMapper, FriendVO> implements FriendService {
 
     @Resource // 或者 @Autowired
     private FriendMapper friendMapper;
@@ -21,10 +23,28 @@ public class FriendServiceImpl implements FriendService {
     @Resource
     private UserMapper userMapper;
 
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+
     @Override
     public List<FriendVO> getFriendList(Long userId) {
-        // 直接调用你刚才写好 SQL 的 Mapper
-        return friendMapper.getFriendList(userId);
+        // 直接调用SQL 的 Mapper
+        List<FriendVO> friendList = friendMapper.getFriendList((userId));
+
+        // 去 Netty 户籍室查询好友在线情况
+        if (friendList != null && !friendList.isEmpty()) {
+            for (FriendVO friend : friendList) {
+                // 拼接Netty设定的key
+                String redisKey = "im:online:" + friend.getId();
+
+                // 在redis查找key是否存在
+                Boolean isOnline = stringRedisTemplate.hasKey((redisKey));
+
+                friend.setIsOnline(isOnline != null && isOnline);
+            }
+        }
+        // 后续优化，不用for，把所有好友的key收集成一个List，再用redis的multiGet拉取
+        return friendList;
     }
     @Override
     public FriendVO searchUser(String username) {

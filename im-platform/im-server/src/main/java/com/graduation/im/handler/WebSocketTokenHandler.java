@@ -6,14 +6,17 @@ import io.jsonwebtoken.Claims;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
-
 import java.util.List;
 import java.util.Map;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
+import io.netty.channel.Channel;
+import java.util.HashMap;
 
 /**
  * 专门处理握手时的身份认证
@@ -27,6 +30,10 @@ public class WebSocketTokenHandler extends SimpleChannelInboundHandler<FullHttpR
 
     @Autowired
     private JwtUtils jwtUtils;
+    private static final ObjectMapper objectMapper = new ObjectMapper(); // 引入 JSON 工具
+    // 注入Redis模板
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest req) throws Exception {
@@ -66,16 +73,28 @@ public class WebSocketTokenHandler extends SimpleChannelInboundHandler<FullHttpR
             // 5. 绑定身份 (存入户籍室)
             UserChannelCtxMap.addChannel(userId, ctx.channel());
 
-            // 6. 将 Netty 的 AttributeKey 设置好 (可选，方便后续 Handler 获取用户信息)
-            // AttributeKey<Long> key = AttributeKey.valueOf("userId");
-            // ctx.channel().attr(key).set(userId);
+            // 6. 在 Redis 里记录用户已上线， key（业务名：模块名：具体ID）
+            stringRedisTemplate.opsForValue().set("im:online:" + userId, "1");
+            log.info("用户：" + username + "ID=" + userId + " 已上线，且存入redis。");
 
-            // 7. 重要！修改 URI，去掉 token 参数
-            // 因为 Netty 的 WebSocketServerProtocolHandler 对路径匹配很严格
-            // 如果不做这步，昨天还需要设置 checkStartsWith=true，做了这步就可以恢复 strict 模式
+            // 7. 通知所有人我上线！
+            Map<String, Object> statusMsg = new HashMap<>();
+            statusMsg.put("type", 3); // 3 代表状态广播
+            statusMsg.put("userId", userId);
+            statusMsg.put("content", "online");
+            String jsonOutput = objectMapper.writeValueAsString(statusMsg);
+            TextWebSocketFrame frame = new TextWebSocketFrame(jsonOutput);
+
+            // 遍历户籍室所有人群发
+            for (Channel channel : UserChannelCtxMap.getAllChannels()) {
+                if (channel.isActive()) {
+                    channel.writeAndFlush(frame.retainedDuplicate());
+                }
+            }
+            // 8. 重要！修改 URI，去掉 token 参数
             req.setUri("/im");
 
-            // 8. 传递给下一个 Handler (即 WebSocket 握手处理器) 完成握手
+            // 9. 传递给下一个 Handler (即 WebSocket 握手处理器) 完成握手
             ctx.fireChannelRead(req.retain());
 
         } catch (Exception e) {

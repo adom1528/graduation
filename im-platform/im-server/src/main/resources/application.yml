@@ -8,12 +8,22 @@ spring:
     nacos:
       discovery:
         server-addr: localhost:8848
+  data:
+    redis:
+      host: localhost          # Redis server host
+      port: 6379
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    # 重点：这里填 localhost:8800，库名 im_core
+    # localhost:8800，库名 im_core
     url: jdbc:mysql://localhost:8800/im_core?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
     username: root
     password: root
+
+# 日志
+logging:
+  level:
+    root: INFO # 整个 Spring Boot 框架底层的日志保持 INFO，不然控制台会被刷爆
+    com.graduation.im: DEBUG # 把你自己的代码包路径设为 DEBUG
 
 # 自定义配置：Netty 的 WebSocket 端口
 im:
@@ -25,3 +35,4 @@ im:
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+

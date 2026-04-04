@@ -27,7 +27,7 @@ public class UserChannelCtxMap {
         return userChannelMap.get(uid);
     }
 
-    // 后面可能会用到：根据通道反查用户ID
+    // 根据通道反查用户ID
     public static Long getUserId(Channel channel) {
         for (Long userId : userChannelMap.keySet()) {
             if (userChannelMap.get(userId) == channel) {
@@ -35,5 +35,10 @@ public class UserChannelCtxMap {
             }
         }
         return null;
+    }
+
+    // 获取当前所有在线的 Channel 集合，进行全站广播
+    public static java.util.Collection<Channel> getAllChannels() {
+        return userChannelMap.values();
     }
 }

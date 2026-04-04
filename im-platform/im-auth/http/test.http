@@ -42,7 +42,7 @@ Authorization: eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwMjYzNTUyMjA0ODIsInVz
 ###
 # 测试好友列表（ls的）
 GET {{host}}/im-auth/friend/list
-Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NTAyMTg0MiwiZXhwIjoxNzc1MTA4MjQyfQ.YGOyowXfOjtHuv-naTfggVdiD_IY4YksgnqpCAX_j3M
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NTMwODUyMSwiZXhwIjoxNzc1Mzk0OTIxfQ.5lvqeoNoH__9BQocOAnXExqHQHqBCdeU381MZU1HqSA
 
 ###
 # 测试搜寻功能
@@ -73,3 +73,5 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzg4MjIzMzY2ODM5MDA5M
 Content-Type: application/x-www-form-urlencoded
 
 targetUserId=2038888113604734977
+
+###

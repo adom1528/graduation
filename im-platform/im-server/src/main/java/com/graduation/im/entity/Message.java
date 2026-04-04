@@ -13,6 +13,6 @@ public class Message {
     // 消息内容
     private String content;
 
-    // 消息类型 (暂定：1=单聊, 2=群聊)
+    // 消息类型 (暂定：1=单聊, 2=群聊, 3=在线状态信息变更)
     private Integer type;
 }

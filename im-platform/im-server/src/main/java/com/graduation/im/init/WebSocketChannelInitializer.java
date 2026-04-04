@@ -12,8 +12,10 @@ import io.netty.handler.stream.ChunkedWriteHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import io.netty.handler.timeout.IdleStateHandler;
+import java.util.concurrent.TimeUnit;
 
-@Component
+@Component // 可被spring管理
 public class WebSocketChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     // 从配置文件读取 WebSocket 路径 (/im)
@@ -40,13 +42,13 @@ public class WebSocketChannelInitializer extends ChannelInitializer<SocketChanne
         // --- 插入自定义认证 Handler ---
         // 只有聚合完 HTTP 请求，我们才能解析里面的 URL 参数
         pipeline.addLast(webSocketTokenHandler);
-        // -------
 
         // 4. WebSocket 协议处理器 (核心！)
         // 它负责处理握手(Handshake)、Ping/Pong、Close 等繁琐细节
         pipeline.addLast(new WebSocketServerProtocolHandler(webSocketPath));
-
-        // 5. 自定义业务处理器 (刚才写的那个工人)
+        // 防止僵尸连接，设置 60 秒没有读到数据，就触发读空闲事件 (READER_IDLE)
+        pipeline.addLast(new IdleStateHandler(60, 0, 0, TimeUnit.SECONDS));
+        // 5. 自定义业务处理器
         pipeline.addLast(simpleHandler);
     }
 }

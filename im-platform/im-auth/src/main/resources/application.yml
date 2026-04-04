@@ -8,6 +8,10 @@ spring:
     nacos:
       discovery:
         server-addr: localhost:8848
+  data:
+    redis:
+      host: localhost          # Redis server host
+      port: 6379
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     # 重点：这里填 localhost:8800，库名 im_core

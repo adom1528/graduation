@@ -14,5 +14,6 @@ public class FriendVO {
     private Long id;         // 重点：这是对方的雪花 ID，前端发消息要用
     private String username; // 账号
     private String nickname; // 昵称
-    private String avatar;   // 头像 URL（如果有的话）
+    private String avatar;   // 头像 URL
+    private Boolean isOnline; // 在线状态
 }
