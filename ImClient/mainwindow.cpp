@@ -32,10 +32,15 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->listFriends, &QListWidget::itemClicked, this, &MainWindow::onFriendItemClicked); // 绑定好友列表点击事件
     connect(ui->btnAddFriend, &QPushButton::clicked, this, &MainWindow::onBtnAddFriendClicked); // 添加好友按钮
     connect(heartbeatTimer, &QTimer::timeout, this, &MainWindow::onHeartbeatTimeout); // 心跳检测
+    connect(ui->btnSendImage, &QPushButton::clicked, this, &MainWindow::onSendImageClicked); // 发送图片
+    connect(ui->btnSendFile, &QPushButton::clicked, this, &MainWindow::onSendFileClicked); // 发送文件
 
     // WebSocket 信号
     connect(webSocket, &QWebSocket::connected, this, &MainWindow::onConnected);
     connect(webSocket, &QWebSocket::textMessageReceived, this, &MainWindow::onTextMessageReceived);
+
+    // 允许聊天框直接调用操作系统的默认浏览器打开超链接
+    ui->textLog->setOpenExternalLinks(true);
 }
 
 MainWindow::~MainWindow()
@@ -234,68 +239,53 @@ void MainWindow::onHeartbeatTimeout()
 void MainWindow::onTextMessageReceived(QString message)
 {
     if (message == "pong") {
-        // qDebug() << "收到服务器心跳回执: pong";
-        return;
+        return; // 拦截心跳
     }
 
-    // 尝试解析 JSON
     QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
-
     if (!doc.isNull() && doc.isObject()) {
-        // --- 是正常的聊天消息 ---
         QJsonObject obj = doc.object();
-
-        // 提取信息类型
         int type = obj["type"].toInt();
 
-        //拦截广播信息
+        // 🌟 1. 拦截广播信息 (type == 3)，这段逻辑独立于聊天框，保持原样
         if (type == 3) {
             QString friendId = obj["userId"].toVariant().toString();
-            QString status = obj["content"].toString(); // "online" 或 "offline"
-
-            // 只有当这个人是我的好友时，我才去更新列表
+            QString status = obj["content"].toString();
             if (friendMap.contains(friendId)) {
                 QString nickname = friendMap.value(friendId);
-
-                // 遍历 QListWidget，找到这个好友的格子并动态改色！
                 for (int i = 0; i < ui->listFriends->count(); ++i) {
                     QListWidgetItem *item = ui->listFriends->item(i);
-                    // 判断绑定的 ID 是不是广播里的那个 ID
                     if (item->data(Qt::UserRole).toString() == friendId) {
                         if (status == "online") {
                             item->setText(nickname + " [在线]");
-                            item->setForeground(QBrush(QColor(46, 139, 87))); // 变绿
+                            item->setForeground(QBrush(QColor(46, 139, 87)));
                             QFont font = item->font(); font.setBold(true); item->setFont(font);
                         } else {
                             item->setText(nickname + " [离线]");
-                            item->setForeground(QBrush(Qt::gray)); // 变灰
+                            item->setForeground(QBrush(Qt::gray));
                             QFont font = item->font(); font.setBold(false); item->setFont(font);
                         }
-                        break; // 找到了就跳出循环
+                        break;
                     }
                 }
             }
-            return; //处理完直接返回
+            return;
         }
-        // 把提取出来的 fromUid 转成 QString，方便去字典里查
+
+        // 🌟 2. 处理聊天消息 (type 1, 4, 5) —— 直接送入漏斗！
         QString fromUidStr = obj["fromUserId"].toVariant().toString();
         QString content = obj["content"].toString();
+        QString fileName = obj["fileName"].toString();
 
-        // 🌟 K导师的偷梁换柱：去字典里查这个 ID 对应的名字
-        QString displayName = fromUidStr; // 默认先显示 ID
-        if (friendMap.contains(fromUidStr)) {
-            displayName = friendMap.value(fromUidStr); // 查到了！替换成昵称！
-        }
+        // 从字典获取昵称，拿不到就显示ID
+        QString nickname = friendMap.value(fromUidStr, fromUidStr);
 
-        QString time = QDateTime::currentDateTime().toString("HH:mm:ss");
+        // 默认收到 WebSocket 的都是对方发来的（isSelf = false）
+        int msgType = (type == 0) ? 1 : type; // 容错处理
+        renderMessageToUI(msgType, nickname, content, fileName, false);
 
-        // 注意看这里，把原来的 arg(fromUid) 换成了 arg(displayName)
-        ui->textLog->append(QString("[%1] %2: %3")
-                                .arg(time)
-                                .arg(displayName)
-                                .arg(content));
     } else {
-        // --- 可能是系统消息 (比如“对方不在线”这种纯文本) ---
+        // 系统文本消息
         ui->textLog->append(">> 系统: " + message);
     }
 }
@@ -333,10 +323,7 @@ void MainWindow::onSendClicked()
         displayTargetName = friendMap.value(targetIdStr); // 替换名称
     }
     QString time = QDateTime::currentDateTime().toString("HH:mm:ss");
-    ui->textLog->append(QString("[%1] 我 -> %2: %3")
-                            .arg(time)
-                            .arg(displayTargetName)
-                            .arg(msgContent));
+    renderMessageToUI(1, "我", msgContent, "", true);
 }
 
 // 拉取好友列表
@@ -346,7 +333,7 @@ void MainWindow::fetchFriendList()
     QUrl url("http://localhost:9000/im-auth/friend/list");
     QNetworkRequest request(url);
 
-    // 2. 挂载 Token（K导师核心划重点：Bearer 后面有空格！）
+    // 2. 挂载 Token
     QString authHeader = "Bearer " + myToken;
     request.setRawHeader("Authorization", authHeader.toUtf8());
 
@@ -513,25 +500,25 @@ void MainWindow::fetchChatHistory(QString friendId)
                 for (int i = 0; i < dataArray.size(); ++i) {
                     QJsonObject msgObj = dataArray[i].toObject();
 
-                    QString fromId = msgObj["fromUserId"].toVariant().toString();
+                    int type = msgObj["type"].toInt();
                     QString content = msgObj["content"].toString();
+                    QString fileName = msgObj["fileName"].toString();
+                    QString fromUserId = msgObj["fromUserId"].toVariant().toString();
                     // 后端传过来的时间通常是 "2026-04-01T13:39:16"，把 T 换成空格变好看点
-                    QString createTime = msgObj["createTime"].toString().replace("T", " ");
+                    //QString createTime = msgObj["createTime"].toString().replace("T", " ");
 
-                    // 🌟 核心判断：这条消息是谁发的？
-                    QString displayName = "我";
-                    if (fromId == friendId) {
+                    // 核心判断
+                    bool isSelf = !(fromUserId == friendId);
+                    QString senderName = "我";
+                    if (!isSelf) {
                         // 如果是对方发的，去字典里把他的名字查出来！
-                        displayName = friendMap.contains(fromId) ? friendMap.value(fromId) : fromId;
+                        senderName = friendMap.contains(fromUserId) ? friendMap.value(fromUserId) : fromUserId;
                     }
 
-                    // 格式化输出到面板上
-                    ui->textLog->append(QString("[%1] %2: %3")
-                                            .arg(createTime)
-                                            .arg(displayName)
-                                            .arg(content));
+                    // 一键渲染上屏！
+                    renderMessageToUI(type, senderName, content, fileName, isSelf);
                 }
-                ui->textLog->append("---------------- 历史消息分割线 ----------------");
+                //ui->textLog->append("---------------- 历史消息分割线 ----------------");
             } else {
                 ui->textLog->append(">> 拉取历史记录失败：" + rootObj["message"].toString());
             }
@@ -542,4 +529,208 @@ void MainWindow::fetchChatHistory(QString friendId)
     });
 }
 
+// 发送图片
+void MainWindow::onSendImageClicked()
+{
+    // 先检查有没有选中聊天对象
+    QString targetId = ui->editTargetId->text();
+    if (targetId.isEmpty()) {
+        QMessageBox::warning(this, "操作提示", "请先在右侧好友列表中选择一个聊天对象！");
+        return; // 拒绝执行后续的所有操作！
+    }
+    // 1. 唤起系统文件选择框，只允许选图片
+    QString filePath = QFileDialog::getOpenFileName(this, "选择要发送的图片", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif)");
+    if (filePath.isEmpty()) {
+        return; // 用户取消了选择
+    }
+
+    // 2. 准备物理文件
+    QFile *file = new QFile(filePath);
+    if (!file->open(QIODevice::ReadOnly)) {
+        qDebug() << "无法打开文件:" << filePath;
+        delete file;
+        return;
+    }
+
+    // 3. 组装 multipart/form-data 报文 (就跟刚才 Postman 做的动作一模一样)
+    QHttpMultiPart *multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+    QHttpPart imagePart;
+    // 设置请求头：指明这是一个叫 "file" 的表单字段，并附带原文件名
+    imagePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                        QVariant(QString("form-data; name=\"file\"; filename=\"%1\"").arg(QFileInfo(filePath).fileName())));
+    imagePart.setBodyDevice(file);
+    file->setParent(multiPart); // 让 file 的生命周期跟着 multiPart 走，防止内存泄漏
+    multiPart->append(imagePart);
+
+    // 4. 瞄准后端的上传接口
+    QNetworkRequest request(QUrl("http://localhost:9002/file/upload"));
+    request.setRawHeader("Authorization", "Bearer " + myToken.toUtf8());
+
+    // 5. 扣动扳机，异步发射！
+    QNetworkAccessManager *manager = new QNetworkAccessManager(this);
+    QNetworkReply *reply = manager->post(request, multiPart);
+    multiPart->setParent(reply); // 自动释放内存
+
+    // 6. 蹲守上传结果
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            // 读取后端返回的 JSON (里面藏着 MinIO 的 URL)
+            QByteArray responseData = reply->readAll();
+            QJsonDocument doc = QJsonDocument::fromJson(responseData);
+            QJsonObject rootObj = doc.object();
+
+            if (rootObj["code"].toInt() == 200) {
+                QString minioUrl = rootObj["data"].toString();
+                qDebug() << "文件上传成功，拿到 URL:" << minioUrl;
+
+                // 上传成功后，把 URL 打包成 type=4 的 WebSocket 消息发给对方！
+                if (!targetId.isEmpty() && webSocket != nullptr && webSocket->isValid()) {
+                    QJsonObject msgObj;
+                    msgObj["type"] = 4; // 协议：4代表图片/文件
+                    msgObj["toUserId"] = targetId.toLongLong();
+                    msgObj["content"] = minioUrl;
+
+                    QJsonDocument sendDoc(msgObj);
+                    webSocket->sendTextMessage(sendDoc.toJson(QJsonDocument::Compact));
+
+                    QString imgHtml = QString("<br><span style='color:green;'>我 (发了一张图片):</span><br><img src='file:///%1' width='150'>").arg(filePath);
+                    ui->textLog->append(imgHtml); // 直接追加带格式的 HTML 代码;
+                    //renderMessageToUI(4, "我", minioUrl, "", true);
+                }
+            } else {
+                qDebug() << "上传失败，服务器返回:" << rootObj["msg"].toString();
+            }
+        } else {
+            qDebug() << "网络请求报错:" << reply->errorString();
+        }
+
+        reply->deleteLater();
+        manager->deleteLater();
+    });
+}
+
+// 发送文件
+void MainWindow::onSendFileClicked()
+{
+    // 1.
+    QString targetId = ui->editTargetId->text();
+    if (targetId.isEmpty()) {
+        QMessageBox::warning(this, "操作提示", "请先在左侧好友列表中选择一个聊天对象！");
+        return;
+    }
+
+    // 2. 唤起文件选择框，允许选择所有类型的文件 (*.*)
+    QString filePath = QFileDialog::getOpenFileName(this, "选择要发送的文件", "", "All Files (*.*)");
+    if (filePath.isEmpty()) {
+        return; // 用户取消了选择
+    }
+
+    //  提取真实文件名 (比如 "需求文档.docx")
+    QFileInfo fileInfo(filePath);
+    QString fileName = fileInfo.fileName();
+
+    // 3. 准备物理文件
+    QFile *file = new QFile(filePath);
+    if (!file->open(QIODevice::ReadOnly)) {
+        qDebug() << "无法打开文件:" << filePath;
+        delete file;
+        return;
+    }
+
+    // 4. 组装 multipart/form-data 报文 (和图片一模一样)
+    QHttpMultiPart *multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+    QHttpPart filePart;
+    filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                       QVariant(QString("form-data; name=\"file\"; filename=\"%1\"").arg(fileName)));
+    filePart.setBodyDevice(file);
+    file->setParent(multiPart);
+    multiPart->append(filePart);
+
+    // 5. 瞄准后端上传接口
+    QNetworkRequest request(QUrl("http://localhost:9002/file/upload"));
+    request.setRawHeader("Authorization", "Bearer " + myToken.toUtf8());
+
+    // 6. 异步发射
+    QNetworkAccessManager *manager = new QNetworkAccessManager(this);
+    QNetworkReply *reply = manager->post(request, multiPart);
+    multiPart->setParent(reply);
+
+    // 7. 蹲守结果
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            QByteArray responseData = reply->readAll();
+            QJsonDocument doc = QJsonDocument::fromJson(responseData);
+            QJsonObject rootObj = doc.object();
+
+            if (rootObj["code"].toInt() == 200) {
+                QString minioUrl = rootObj["data"].toString();
+                qDebug() << "文件上传成功，拿到 URL:" << minioUrl;
+
+                // 组装 type=5 的 WebSocket 消息
+                if (webSocket != nullptr && webSocket->isValid()) {
+                    QJsonObject msgObj;
+                    msgObj["type"] = 5;
+                    msgObj["toUserId"] = targetId.toLongLong();
+                    msgObj["content"] = minioUrl;
+                    msgObj["fileName"] = fileName;
+
+                    QJsonDocument sendDoc(msgObj);
+                    webSocket->sendTextMessage(sendDoc.toJson(QJsonDocument::Compact));
+
+                    // 发送方本地渲染：直接用 <a> 标签做个超链接
+                    QString fileHtml = QString("<br><span style='color:green;'>我 (发送了文件): </span><a href='%1'>%2</a>")
+                                           .arg(minioUrl).arg(fileName);
+                    renderMessageToUI(5,"我", minioUrl, fileName, true);
+            } else {
+                qDebug() << "上传失败:" << rootObj["msg"].toString();
+            }
+        } else {
+            qDebug() << "网络请求报错:" << reply->errorString();
+        }
+
+        reply->deleteLater();
+        manager->deleteLater();
+    }
+    });
+}
+
+// 富文本编辑
+void MainWindow::renderMessageToUI(int type, const QString &senderName, const QString &content, const QString &fileName, bool isSelf)
+{
+    // 1. 判断颜色、称呼和当前时间
+    QString color = isSelf ? "green" : "blue";
+    QString prefix = isSelf ? "我" : senderName;
+    QString time = QDateTime::currentDateTime().toString("HH:mm:ss");
+
+    // 2. 统一分发渲染逻辑
+    if (type == 1 || type == 0) { // 文本消息 (有些旧系统可能没传 type，默认当文本处理)
+        QString html = QString("<br><span style='color:%1;'>[%2] %3: </span>%4")
+                           .arg(color, time, prefix, content);
+        ui->textLog->append(html);
+    }
+    else if (type == 4) { // 图片消息
+        QNetworkRequest request((QUrl(content)));
+        QNetworkAccessManager *manager = new QNetworkAccessManager(this);
+        QNetworkReply *reply = manager->get(request);
+
+        connect(reply, &QNetworkReply::finished, this, [=]() {
+            if (reply->error() == QNetworkReply::NoError) {
+                QByteArray imgData = reply->readAll();
+                QString base64Img = QString::fromLatin1(imgData.toBase64());
+                QString html = QString("<br><span style='color:%1;'>[%2] %3 (图片):</span><br><img src='data:image/png;base64,%4' width='150'>")
+                                   .arg(color, time, prefix, base64Img);
+                ui->textLog->append(html);
+            } else {
+                ui->textLog->append(QString("<br><span style='color:gray;'>[%1 的图片加载失败]</span>").arg(prefix));
+            }
+            reply->deleteLater();
+            manager->deleteLater();
+        });
+    }
+    else if (type == 5) { // 文件消息
+        QString fileHtml = QString("<br><span style='color:%1;'>[%2] %3 发送了文件: </span><br><a href='%4'>%5</a>")
+                               .arg(color, time, prefix, content, fileName);
+        ui->textLog->append(fileHtml);
+    }
+}
 
