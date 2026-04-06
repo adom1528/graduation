@@ -51,3 +51,18 @@ services:
       - RABBITMQ_DEFAULT_USER=admin
       - RABBITMQ_DEFAULT_PASS=admin
       - TZ=Asia/Shanghai
+
+# 5. 对象存储 MinIO (超级物理仓库)
+  minio:
+    image: minio/minio
+    container_name: im-minio
+    ports:
+      - "19000:9000"   # API 端口（后端代码用来传图的端口）
+      - "19001:9001"   # 控制台端口（浏览器里看图片的管理界面）
+    environment:
+      - MINIO_ROOT_USER=admin          # 超级管理员账号
+      - MINIO_ROOT_PASSWORD=admin12345   # 超级管理员密码 
+      - TZ=Asia/Shanghai
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./minio/data:/data             # 映射到你宿主机的目录

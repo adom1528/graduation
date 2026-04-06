@@ -85,6 +85,7 @@ middleware/mysql/data/
 middleware/mysql/logs/
 middleware/redis/data/
 middleware/rabbitmq/data/
+middleware/minio/data/
 
 # 6. 个人日志
 资料/
