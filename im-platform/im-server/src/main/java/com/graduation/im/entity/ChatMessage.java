@@ -15,4 +15,5 @@ public class ChatMessage {
     private String content;
     private Integer type;
     private LocalDateTime createTime;
+    private String fileName;
 }

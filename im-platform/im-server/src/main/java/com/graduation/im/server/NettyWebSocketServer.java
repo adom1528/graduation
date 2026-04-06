@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 public class NettyWebSocketServer implements CommandLineRunner {
 
     @Value("${im.server.port}")
-    private int port; // 9003
+    private int port; // 9002
 
     @Autowired
     private WebSocketChannelInitializer webSocketChannelInitializer;

@@ -37,7 +37,7 @@ public class SimpleHandler extends SimpleChannelInboundHandler<TextWebSocketFram
         String text = frame.text();
         // 如果是心跳包，回复一个 "pong" 就直接结束，不走数据库逻辑
         if ("ping".equals(text)) {
-            log.debug("收到心跳: ping, 回复: pong");
+            // log.debug("收到心跳: ping, 回复: pong");
             ctx.channel().writeAndFlush(new TextWebSocketFrame("pong"));
             return;
         }
@@ -49,7 +49,8 @@ public class SimpleHandler extends SimpleChannelInboundHandler<TextWebSocketFram
         try {
             msg = objectMapper.readValue(text, Message.class);
         } catch (Exception e) {
-            log.error("JSON格式错误");
+            //log.error("JSON格式错误");
+            log.error("🔴 JSON解析大翻车！前端发来的原始文本是: [{}]", text, e);
             return;
         }
 
@@ -63,11 +64,18 @@ public class SimpleHandler extends SimpleChannelInboundHandler<TextWebSocketFram
         }
         msg.setFromUserId(fromUserId);
 
-        // 3. 路由转发 (单聊核心逻辑)
+        // 3. 路由转发
         Long toUserId = msg.getToUserId();
         Channel targetChannel = UserChannelCtxMap.getChannel(toUserId);
         // 不管对方在不在，这句聊天记录必须永久存入数据库
-        chatMessageService.saveMessage(fromUserId, toUserId, msg.getContent());
+        int type = msg.getType();
+        // 判断是文件时才传文件名
+        if (type == 5) {
+            chatMessageService.saveMessage(fromUserId, toUserId, type, msg.getContent(), msg.getFileName());
+        } else {
+            chatMessageService.saveMessage(fromUserId, toUserId, type, msg.getContent());
+        }
+
 
         if (targetChannel != null && targetChannel.isActive()) {
             // A. 对方在线 -> 直接转发

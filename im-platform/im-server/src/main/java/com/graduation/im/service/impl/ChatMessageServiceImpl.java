@@ -10,15 +10,24 @@ import java.util.List;
 @Service
 public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatMessage> implements ChatMessageService {
     @Override
-    public void saveMessage(Long fromId, Long toId, String content) {
+    public void saveMessage(Long fromId, Long toId, int type, String content, String fileName ) {
         ChatMessage msg = new ChatMessage();
         msg.setFromUserId(fromId);
         msg.setToUserId(toId);
         msg.setContent(content);
-        msg.setType(1); // 1代表纯文本
+        msg.setType(type); // 1代表单聊，2代表群聊，3代表离线/在线状态，4是图片，5是文件
+        msg.setFileName(fileName);
         this.save(msg); // 自动生成雪花ID并落库！
     }
-
+    @Override
+    public void saveMessage(Long fromId, Long toId, int type, String content ) {
+        ChatMessage msg = new ChatMessage();
+        msg.setFromUserId(fromId);
+        msg.setToUserId(toId);
+        msg.setContent(content);
+        msg.setType(type); // 1代表单聊，2代表群聊，3代表离线/在线状态，4是图片，5是文件
+        this.save(msg); // 自动生成雪花ID并落库！
+    }
     @Override
     public List<ChatMessage> getHistory(Long userId, Long friendId) {
         QueryWrapper<ChatMessage> wrapper = new QueryWrapper<>();

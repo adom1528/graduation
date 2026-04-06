@@ -1,9 +1,13 @@
 server:
-  port: 9002 # Spring Boot 的 HTTP 端口 (Gateway:9000, Auth:9001, IM:9002)
+  port: 9002 # Spring Boot 的 HTTP 端口 (Gateway:9000, Auth:9001, Spring Boot 内置的 Web 服务器:9002)
 
 spring:
   application:
     name: im-server # 注册到 Nacos 的名字
+  servlet:
+    multipart:
+      max-file-size: 100MB      # 单个文件最大限制，放宽到 10MB
+      max-request-size: 100MB   # 整个请求最大限制
   cloud:
     nacos:
       discovery:
@@ -35,4 +39,12 @@ im:
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# MinIO 配置
+minio:
+  endpoint: http://localhost:19000  # API 端口！千万别写成控制台的 19001
+  access-key: admin
+  secret-key: admin12345
+  bucket-name: im-chat
+
 
