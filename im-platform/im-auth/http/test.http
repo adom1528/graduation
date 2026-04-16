@@ -7,7 +7,7 @@
 POST {{host}}/im-auth/auth/register
 Content-Type: application/x-www-form-urlencoded
 
-username=ww&password=12345
+username=zl&password=12345
 
 ###
 

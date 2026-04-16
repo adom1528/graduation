@@ -1,7 +1,7 @@
-package com.graduation.auth.controller;
+package com.graduation.im.controller;
 
-import com.graduation.auth.common.Result;
-import com.graduation.auth.service.UserService;
+import com.graduation.im.common.Result;
+import com.graduation.im.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,9 +14,9 @@ public class AuthController {
 
     // POST http://localhost:9001/auth/register
     @PostMapping("/register")
-    public Result<String> register(@RequestParam String username, @RequestParam String password) {
+    public Result<String> register(@RequestParam String username, @RequestParam String nickname, @RequestParam String password) {
         try {
-            userService.register(username, password);
+            userService.register(username, nickname, password);
             return Result.success("注册成功");
         } catch (Exception e) {
             return Result.error(e.getMessage());

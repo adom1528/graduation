@@ -1,4 +1,4 @@
-package com.graduation.auth.common;
+package com.graduation.im.common;
 
 import lombok.Data;
 

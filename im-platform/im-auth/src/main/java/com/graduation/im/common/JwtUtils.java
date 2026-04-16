@@ -1,4 +1,4 @@
-package com.graduation.auth.common;
+package com.graduation.im.common;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;

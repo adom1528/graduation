@@ -1,11 +1,11 @@
-package com.graduation.auth.service.impl;
+package com.graduation.im.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.graduation.auth.common.JwtUtils;
-import com.graduation.auth.entity.User;
-import com.graduation.auth.mapper.UserMapper;
-import com.graduation.auth.service.UserService;
+import com.graduation.im.common.JwtUtils;
+import com.graduation.im.entity.User;
+import com.graduation.im.mapper.UserMapper;
+import com.graduation.im.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -15,7 +15,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private static final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
     @Override
-    public void register(String username, String password) {
+    public void register(String username, String nickname, String password) {
         // 1. 检查用户名是否已存在
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
 
@@ -30,7 +30,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 加密处理
         String encodedPassword = encoder.encode(password);
         user.setPassword(encodedPassword);
-        user.setNickname("用户" + username); // 默认昵称
+        user.setNickname(nickname); // 默认昵称
 
         // 3. 写入数据库
         save(user);

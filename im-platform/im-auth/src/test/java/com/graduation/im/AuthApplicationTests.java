@@ -1,11 +1,10 @@
-package com.graduation.auth;
+package com.graduation.im;
 
-import com.graduation.auth.entity.User;
-import com.graduation.auth.mapper.UserMapper;
+import com.graduation.im.entity.User;
+import com.graduation.im.mapper.UserMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.transaction.annotation.Transactional; // 引入这个包
 
 import java.util.List;
 
