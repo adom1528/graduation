@@ -1,7 +1,7 @@
-package com.graduation.auth.mapper;
+package com.graduation.im.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.graduation.auth.entity.FriendVO;
+import com.graduation.im.entity.FriendVO;
 import org.apache.ibatis.annotations.*;
 
 import java.util.List;

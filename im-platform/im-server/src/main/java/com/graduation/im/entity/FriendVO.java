@@ -1,11 +1,11 @@
-package com.graduation.auth.entity;
+package com.graduation.im.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
-@Data // Lombok: 自动生成 Gettter/Setter/ToString
+@Data // Lombok: 自动生成 Getter/Setter/ToString
 @TableName("im_friend") // 对应数据库：im_user（MyBatis Plus）
 
 // 加上 lombok 注解 @Data

@@ -6,8 +6,24 @@
 POST {{host}}/im-auth/auth/login
 Content-Type: application/x-www-form-urlencoded
 
-username=ls&password=12345
+username=zs&password=12345
+
+### 测试再注册一个ls
+POST {{host}}/im-auth/auth/register
+Content-Type: application/x-www-form-urlencoded
+
+username=ls2&nickname=ls&password=12345
 
 ### 测试拉取历史聊天记录
 GET {{host}}/im-server/chat/history?friendId=2039190026355220482
 Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NTQ3MDIyNywiZXhwIjoxNzc1NTU2NjI3fQ.vjqtEh4uQEyGddxJf_HLa3E9AD41VpN5MiUFo9SyIJc
+
+### 测试搜索用户(nickname)
+GET {{host}}/im-server/user/search?nickname=ls
+
+### 测试发出好友请求(自己加自己)
+POST {{host}}/im-server/friend/request
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwMjYzNTUyMjA0ODIsInVzZXJuYW1lIjoienMiLCJzdWIiOiJ6cyIsImlhdCI6MTc3NjM1NTAxMSwiZXhwIjoxNzc2NDQxNDExfQ._sDe7McPHZ8g_valokd4FoH6BECli4t_u-2Q_qBTJHQ
+Content-Type: application/x-www-form-urlencoded
+
+targetUserId=2039190047876194306&reason=我是zs
