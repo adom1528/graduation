@@ -11,9 +11,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    // 1. 初始化界面状态
-    ui->boxChat->hide();  // 一开始隐藏聊天框
-    ui->boxLogin->show(); // 显示登录框
+
 
     // 2. 初始化网络
     networkManager = new QNetworkAccessManager(this);
@@ -25,8 +23,6 @@ MainWindow::MainWindow(QWidget *parent)
     heartbeatTimer = new QTimer(this);
 
     // 4. 信号槽连接
-    connect(ui->btnLogin, &QPushButton::clicked, this, &MainWindow::onLoginClicked); // 绑定登录按钮
-    connect(ui->btnRegister, &QPushButton::clicked, this, &MainWindow::onRegisterClicked); // 绑定注册
     connect(ui->btnExitLogin, &QPushButton::clicked, this, &MainWindow::onExitLoginClicked); //绑定退出登录
     connect(ui->btnSend, &QPushButton::clicked, this, &MainWindow::onSendClicked); // 绑定发送信息
     connect(ui->listFriends, &QListWidget::itemClicked, this, &MainWindow::onFriendItemClicked); // 绑定好友列表点击事件
@@ -65,121 +61,6 @@ void MainWindow::onFriendItemClicked(QListWidgetItem *item)
     fetchChatHistory(friendId);
 }
 
-// 登录逻辑
-void MainWindow::onLoginClicked()
-{
-    QString username = ui->editUsername->text().trimmed();
-    QString password = ui->editPassword->text().trimmed();
-
-    if (username.isEmpty() || password.isEmpty()) {
-        QMessageBox::warning(this, "提示", "账号密码不能为空");
-        return;
-    }
-
-    // 这里填你验证通过的那个 URL
-    QUrl url("http://localhost:9000/im-auth/auth/login");
-
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-
-    QUrlQuery params;
-    params.addQueryItem("username", username);
-    params.addQueryItem("password", password);
-    QByteArray data = params.toString(QUrl::FullyEncoded).toUtf8();
-
-    QNetworkReply *reply = networkManager->post(request, data);
-
-    connect(reply, &QNetworkReply::finished, [=]() {
-        if (reply->error() == QNetworkReply::NoError) {
-            QByteArray responseData = reply->readAll();
-            QJsonDocument jsonDoc = QJsonDocument::fromJson(responseData);
-            QJsonObject jsonObj = jsonDoc.object();
-
-            if (jsonObj.contains("code") && jsonObj["code"].toInt() == 200) {
-                // --- 登录成功核心逻辑 ---
-
-                // 1. 保存 Token,拉取好友列表
-                this->myToken = jsonObj["data"].toString();
-                fetchFriendList();
-
-                // 2. 界面切换
-                ui->boxLogin->hide();
-                ui->boxChat->show();
-
-                // 3. 开始连接 WebSocket！
-                // URL 格式: ws://localhost:9000/im?token=xxxxx
-                QUrl wsUrl("ws://localhost:9000/im");
-                QUrlQuery query;
-                query.addQueryItem("token", myToken); // 把 Token 带在 URL 里
-                wsUrl.setQuery(query);
-
-                ui->textLog->append("正在连接服务器...");
-                webSocket->open(wsUrl);
-
-            } else {
-                QMessageBox::critical(this, "登录失败", jsonObj["message"].toString());
-            }
-        } else {
-            QMessageBox::critical(this, "网络错误", reply->errorString());
-        }
-        reply->deleteLater();
-    });
-}
-
-//注册逻辑
-void MainWindow::onRegisterClicked()
-{
-    QString username = ui->editUsername->text().trimmed();
-    QString password = ui->editPassword->text().trimmed();
-
-    if (username.isEmpty() || password.isEmpty()) {
-        QMessageBox::warning(this, "提示", "注册账号和密码不能为空");
-        return;
-    }
-
-    // 防连点保护
-    ui->btnRegister->setEnabled(false);
-
-    // 1. 组装 URL（走网关）
-    QUrl url("http://localhost:9000/im-auth/auth/register");
-    QNetworkRequest request(url);
-
-    // 2. 设置表单提交格式
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-
-    // 3. 组装表单参数
-    QUrlQuery params;
-    params.addQueryItem("username", username);
-    params.addQueryItem("password", password);
-    QByteArray data = params.toString(QUrl::FullyEncoded).toUtf8();
-
-    // 4. 发射 POST 请求
-    QNetworkReply *reply = networkManager->post(request, data);
-
-    connect(reply, &QNetworkReply::finished, this, [=]() {
-        if (reply->error() == QNetworkReply::NoError) {
-            QByteArray responseData = reply->readAll();
-            QJsonDocument jsonDoc = QJsonDocument::fromJson(responseData);
-            QJsonObject jsonObj = jsonDoc.object();
-
-            if (jsonObj.contains("code") && jsonObj["code"].toInt() == 200) {
-                // 注册成功！
-                QMessageBox::information(this, "注册成功", "账号注册成功，请直接点击登录！");
-                // 贴心小细节：不需要清空输入框，这样用户点了“确定”后直接点“登录”就能进系统，丝滑！
-            } else {
-                // 后端返回的业务错误（比如：用户名已存在）
-                QMessageBox::critical(this, "注册失败", jsonObj["message"].toString());
-            }
-        } else {
-            // 网络层面的错误（比如后端没开）
-            QMessageBox::critical(this, "网络错误", reply->errorString());
-        }
-
-        reply->deleteLater();
-        ui->btnRegister->setEnabled(true); // 恢复按钮
-    });
-}
-
 // 退出登录
 void MainWindow::onExitLoginClicked() {
     // ================= 1. 物理断开 =================
@@ -197,12 +78,6 @@ void MainWindow::onExitLoginClicked() {
     ui->editTargetId->clear();      // 清空当前选中的聊天对象输入框
     ui->editSearchUser->clear();    // 清空搜索框
 
-    // 贴心小细节：清空密码框，但保留账号框，方便用户下次快速重新登录
-    ui->editPassword->clear();
-
-    // ================= 4. 场景切换 =================
-    ui->boxChat->hide();
-    ui->boxLogin->show();
 }
 
 // WebSocket 连接成功

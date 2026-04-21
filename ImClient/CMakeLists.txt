@@ -11,6 +11,11 @@ qt_add_executable(ImClient
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
+    httpmanager.h
+    httpmanager.cpp
+    loginwindow.h loginwindow.cpp loginwindow.ui
+    registerwindow.h registerwindow.cpp registerwindow.ui
+
 
 )
 

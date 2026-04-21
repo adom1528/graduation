@@ -38,9 +38,6 @@ private:
     void renderMessageToUI(int type, const QString &senderName, const QString &content, const QString &fileName, bool isSelf);
 
 private slots:
-    // 登录按钮点击
-    void onLoginClicked(); // 登录
-    void onRegisterClicked(); // 注册
     void onExitLoginClicked(); // 退出登录
     void onFriendItemClicked(QListWidgetItem *item); // 点击好友列表触发
     void onBtnAddFriendClicked(); // 点击添加好友
