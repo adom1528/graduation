@@ -87,4 +87,66 @@ public class FriendServiceImpl extends ServiceImpl<FriendMapper, FriendVO> imple
         // nettyService.sendFriendRequestNotification(targetUserId);
 
     }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void acceptFriendRequest(Long currentUserId, Long requestId) {
+
+        // 1. 根据主键查出这条申请记录
+        FriendRequest request = friendRequestMapper.selectById(requestId);
+
+        if (request == null) {
+            throw new RuntimeException("好友申请记录不存在");
+        }
+
+        // 防越权！只能同意发给自己的申请
+        if (!request.getToUserId().equals(currentUserId)) {
+            throw new RuntimeException("非法操作：无权处理此申请");
+        }
+
+        // 防重复处理
+        if (request.getStatus() != 0) {
+            throw new RuntimeException("该申请已处理过，请勿重复操作");
+        }
+
+
+        Long fromUserId = request.getFromUserId();
+
+        // 防线三：极小概率并发防御，检查是否已经是好友了
+        if (friendMapper.checkIsFriend(currentUserId, fromUserId) > 0) {
+            // 如果已经是好友了，说明可能发生了并发或者脏数据
+            // 我们直接把这条申请状态改为 1 即可，不用抛异常打断流程
+            request.setStatus(1);
+            friendRequestMapper.updateById(request);
+            return;
+        }
+
+        // 2. 修改申请状态为：1 (已同意)
+        request.setStatus(1);
+        friendRequestMapper.updateById(request);
+
+        // 3. 往 im_friend 表里插入双向奔赴的好友关系！
+        Long id1 = IdWorker.getId();
+        Long id2 = IdWorker.getId();
+
+        // 注意方向：当前用户(ls) 同意了 发起方(zs)
+        friendMapper.insertFriend(id1, currentUserId, fromUserId); // ls -> zs
+        friendMapper.insertFriend(id2, fromUserId, currentUserId); // zs -> ls
+
+        // 🌟 K导师的伏笔2：未来在这里，也需要调用 Netty 给发起方发送一条“您的申请已通过”的实时通知！
+        // nettyService.sendFriendAcceptNotification(fromUserId);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void rejectFriendRequest(Long currentUserId, Long requestId) {
+        FriendRequest request = friendRequestMapper.selectById(requestId);
+        if (request == null || !request.getToUserId().equals(currentUserId)) {
+            throw new RuntimeException("非法操作");
+        }
+        if (request.getStatus() != 0) {
+            throw new RuntimeException("该申请已处理过");
+        }
+        // 直接改状态为 2 (已拒绝)
+        request.setStatus(2);
+        friendRequestMapper.updateById(request);
+    }
 }

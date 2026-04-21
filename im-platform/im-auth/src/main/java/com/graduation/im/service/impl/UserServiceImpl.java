@@ -30,7 +30,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 加密处理
         String encodedPassword = encoder.encode(password);
         user.setPassword(encodedPassword);
-        user.setNickname(nickname); // 默认昵称
+        if (nickname.isEmpty()) {
+            user.setNickname("用户" + username);
+        } else {
+            user.setNickname(nickname);
+        }
 
         // 3. 写入数据库
         save(user);

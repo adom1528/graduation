@@ -46,9 +46,7 @@ public class FriendController {
                                        @RequestParam(value = "reason", required = false) String reason,
                                        HttpServletRequest request) {
 
-        // 从你的 Token 解析器或者拦截器中拿到当前登录用户的 ID
-        // 这里假设你有个工具类或者在 request attribute 里存了 userId
-        //Long currentUserId = (Long) request.getAttribute("userId");
+        // 从你的 Token 解析器中拿到当前登录用户的 ID
         String token = request.getHeader("Authorization");
         //log.debug(token);
         // JwtUtils 直接拿 ID
@@ -63,6 +61,41 @@ public class FriendController {
             return Result.success("好友申请已发送");
         } catch (RuntimeException e) {
             // 捕获我们 Service 层抛出的业务异常，返回给前端展示
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 处理好友申请 (同意/拒绝)
+     * action: 1-同意, 2-拒绝
+     */
+    @PostMapping("/handle-request")
+    public Result<?> handleFriendRequest(@RequestParam("requestId") Long requestId,
+                                         @RequestParam("action") Integer action,
+                                         HttpServletRequest request) {
+
+        //Long currentUserId = (Long) request.getAttribute("userId");
+        // 从你的 Token 解析器中拿到当前登录用户的 ID
+        String token = request.getHeader("Authorization");
+        //log.debug(token);
+        // JwtUtils 直接拿 ID
+        Long currentUserId = jwtUtils.getUserIdFromHeaderToken(token);
+        if (currentUserId == null) {
+            return Result.error("Token无效或已过期，请重新登录");
+        }
+        //log.debug(currentUserId.toString());
+
+        try {
+            if (action == 1) {
+                friendService.acceptFriendRequest(currentUserId, requestId);
+                return Result.success("已同意该好友申请");
+            } else if (action == 2) {
+                friendService.rejectFriendRequest(currentUserId, requestId);
+                return Result.success("已拒绝该好友申请");
+            } else {
+                return Result.error("未知的操作指令");
+            }
+        } catch (RuntimeException e) {
             return Result.error(e.getMessage());
         }
     }

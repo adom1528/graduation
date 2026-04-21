@@ -4,9 +4,12 @@
 
 ### 测试登录ls
 POST {{host}}/im-auth/auth/login
-Content-Type: application/x-www-form-urlencoded
+Content-Type: application/json
 
-username=zs&password=12345
+{
+  "username": "ls",
+  "password": "12345"
+}
 
 ### 测试再注册一个ls
 POST {{host}}/im-auth/auth/register
@@ -27,3 +30,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwMjYzNTUyMjA0O
 Content-Type: application/x-www-form-urlencoded
 
 targetUserId=2039190047876194306&reason=我是zs
+
+### 测试处理好友请求（ls接受zs）
+POST {{host}}/im-server/friend/handle-request
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NjM5NDc0MCwiZXhwIjoxNzc2NDgxMTQwfQ.WQhEdn665bFD4YsoflPBPM8kdr5R7D8xw5BjxzPKoz8
+Content-Type: application/x-www-form-urlencoded
+
+requestId=1&action=1

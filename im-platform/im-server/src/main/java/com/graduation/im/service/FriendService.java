@@ -9,4 +9,8 @@ public interface FriendService {
     List<FriendVO> getFriendList(Long userId);
     @Transactional(rollbackFor = Exception.class)
     public void sendFriendRequest(Long currentUserId, Long targetUserId, String reason);
+
+    void acceptFriendRequest(Long currentUserId, Long requestId);
+
+    void rejectFriendRequest(Long currentUserId, Long requestId);
 }
