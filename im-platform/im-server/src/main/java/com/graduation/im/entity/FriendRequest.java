@@ -27,7 +27,7 @@ public class FriendRequest {
     private Long toUserId;
 
     /**
-     * 验证信息(例如: "你好，我是架构师小王")
+     * 验证信息(例如: "你好，我是zs")
      */
     private String reason;
 

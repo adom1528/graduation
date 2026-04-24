@@ -1,5 +1,6 @@
 package com.graduation.im.service;
 
+import com.graduation.im.entity.FriendRequestVO;
 import com.graduation.im.entity.FriendVO;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,4 +14,6 @@ public interface FriendService {
     void acceptFriendRequest(Long currentUserId, Long requestId);
 
     void rejectFriendRequest(Long currentUserId, Long requestId);
+
+    List<FriendRequestVO> getPendingRequests(Long currentUserId);
 }

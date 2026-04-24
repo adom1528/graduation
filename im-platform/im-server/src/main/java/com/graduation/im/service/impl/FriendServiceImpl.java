@@ -4,11 +4,13 @@ import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.graduation.im.entity.ChatUser;
 import com.graduation.im.entity.FriendRequest;
+import com.graduation.im.entity.FriendRequestVO;
 import com.graduation.im.entity.FriendVO;
 import com.graduation.im.mapper.FriendMapper;
 import com.graduation.im.mapper.FriendRequestMapper;
 import com.graduation.im.mapper.UserMapper;
 import com.graduation.im.service.FriendService;
+import com.graduation.im.service.NettyService;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,10 @@ public class FriendServiceImpl extends ServiceImpl<FriendMapper, FriendVO> imple
 
     @Resource
     private FriendRequestMapper friendRequestMapper;
+
+    @Resource
+    private NettyService nettyService;
+
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
@@ -83,8 +89,8 @@ public class FriendServiceImpl extends ServiceImpl<FriendMapper, FriendVO> imple
         // 存入数据库！
         friendRequestMapper.insert(request);
 
-        // 🌟 K导师的伏笔：在这里，我们未来需要调用 Netty 给 targetUserId 发送一条实时通知！
-        // nettyService.sendFriendRequestNotification(targetUserId);
+        // 若目标用户在线，netty发送一条实时通知
+        nettyService.sendFriendRequestNotification(targetUserId);
 
     }
 
@@ -132,8 +138,8 @@ public class FriendServiceImpl extends ServiceImpl<FriendMapper, FriendVO> imple
         friendMapper.insertFriend(id1, currentUserId, fromUserId); // ls -> zs
         friendMapper.insertFriend(id2, fromUserId, currentUserId); // zs -> ls
 
-        // 🌟 K导师的伏笔2：未来在这里，也需要调用 Netty 给发起方发送一条“您的申请已通过”的实时通知！
-        // nettyService.sendFriendAcceptNotification(fromUserId);
+        // 若用户在线时对方通过申请，netty发送通知
+        nettyService.sendFriendAcceptNotification(fromUserId);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -148,5 +154,12 @@ public class FriendServiceImpl extends ServiceImpl<FriendMapper, FriendVO> imple
         // 直接改状态为 2 (已拒绝)
         request.setStatus(2);
         friendRequestMapper.updateById(request);
+    }
+
+    // 在实现类中完成调用
+    @Override
+    public List<FriendRequestVO> getPendingRequests(Long currentUserId) {
+        // 没有任何多余的废话，直接让 MyBatis 去做最高效的联表抓取
+        return friendRequestMapper.getPendingRequests(currentUserId);
     }
 }

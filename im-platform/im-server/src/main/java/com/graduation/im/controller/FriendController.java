@@ -1,5 +1,6 @@
 package com.graduation.im.controller;
 
+import com.graduation.im.entity.FriendRequestVO;
 import com.graduation.im.util.JwtUtils;
 import com.graduation.im.common.Result;
 import com.graduation.im.entity.FriendVO;
@@ -98,5 +99,25 @@ public class FriendController {
         } catch (RuntimeException e) {
             return Result.error(e.getMessage());
         }
+    }
+
+    /**
+     * 获取当前登录用户的待处理好友申请列表
+     */
+    @GetMapping("/request-list")
+    public Result<List<FriendRequestVO>> getPendingRequests(HttpServletRequest request) {
+        // 1. 从 Token 中解析出真实的当前用户 ID
+        String token = request.getHeader("Authorization");
+        Long currentUserId = jwtUtils.getUserIdFromHeaderToken(token);
+
+        // 2. 身份防伪拦截
+        if (currentUserId == null) {
+            return Result.error("Token无效或已过期，请重新登录");
+        }
+
+        // 3. 调取联表查询结果
+        List<FriendRequestVO> pendingList = friendService.getPendingRequests(currentUserId);
+
+        return Result.success(pendingList);
     }
 }

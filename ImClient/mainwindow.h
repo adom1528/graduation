@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include "chatwidget.h"
+#include "newfriendwidget.h"
 #include <QMainWindow>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -129,6 +130,7 @@ private:
     QFrame* m_middleSidebar;
     QVBoxLayout* m_sidebarLayout;
     QWidget* m_searchHeader;
+    NewFriendWidget* m_newFriendWidget;
     QListWidget* m_friendList;
 
     // 第三段：右侧堆栈式工作区

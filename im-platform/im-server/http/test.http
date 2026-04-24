@@ -7,7 +7,7 @@ POST {{host}}/im-auth/auth/login
 Content-Type: application/json
 
 {
-  "username": "ls",
+  "username": "ww",
   "password": "12345"
 }
 
@@ -19,7 +19,7 @@ username=ls2&nickname=ls&password=12345
 
 ### 测试拉取历史聊天记录
 GET {{host}}/im-server/chat/history?friendId=2039190026355220482
-Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3NTQ3MDIyNywiZXhwIjoxNzc1NTU2NjI3fQ.vjqtEh4uQEyGddxJf_HLa3E9AD41VpN5MiUFo9SyIJc
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3Njk1NDQ2MSwiZXhwIjoxNzc3MDQwODYxfQ.NLous7uIq16ISUEmGJbCiyi4CmrCIHq1xePGhr7hAzw
 
 ### 测试搜索用户(nickname)
 GET {{host}}/im-server/user/search?nickname=ls
@@ -37,3 +37,11 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzM
 Content-Type: application/x-www-form-urlencoded
 
 requestId=1&action=1
+
+### 测试拉取好友列表
+GET {{host}}/im-server/friend/list
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3Njg2NzI4MywiZXhwIjoxNzc2OTUzNjgzfQ.WlAP3E5pzq-O19UEBtkljjSfb42Y78kQPNDClBMY2i4
+
+### 测试拉取好友申请列表
+GET {{host}}/im-server/friend/request-list
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNzY3ODMzMzc0NzQsInVzZXJuYW1lIjoid3ciLCJzdWIiOiJ3dyIsImlhdCI6MTc3NzAzNzU1MCwiZXhwIjoxNzc3MTIzOTUwfQ.FJwu6vWKECnkbjSfwc3s9d7En__smwDQsTiQNWJpkdk

@@ -22,9 +22,9 @@ public class NettyWebSocketServer implements CommandLineRunner {
     @Autowired
     private WebSocketChannelInitializer webSocketChannelInitializer;
 
-    // Boss 线程组：专门负责处理连接请求 (像公司前台)
+    // Boss 线程组：专门负责处理连接请求
     private final EventLoopGroup bossGroup = new NioEventLoopGroup(1);
-    // Worker 线程组：专门负责处理 IO 读写 (像干活的员工)
+    // Worker 线程组：专门负责处理 IO 读写
     private final EventLoopGroup workerGroup = new NioEventLoopGroup();
 
     @Override

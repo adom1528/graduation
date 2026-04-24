@@ -18,6 +18,6 @@ public class Message {
     // 接收文件/图片的字段
     private String fileName;
 
-    // 消息类型 (暂定：1=单聊, 2=群聊, 3=在线状态信息变更, 4=图片，5=文件)
+    // 消息类型 (暂定：1=单聊, 2=群聊, 3=在线状态信息变更, 4=图片，5=文件, 6=好友列表刷新通知)
     private Integer type;
 }

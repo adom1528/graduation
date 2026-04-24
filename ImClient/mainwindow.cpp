@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "httpmanager.h"
+#include "addfrienddialog.h"
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -92,6 +93,15 @@ void MainWindow::fetchFriendList() {
         if (code == 200) {
             QJsonArray data = res["data"].toArray();
             m_friendList->clear(); // 清空旧列表项
+
+            // 暴力置顶 “新朋友” 项
+            QListWidgetItem* newFriendItem = new QListWidgetItem("⭐ 新朋友", m_friendList);
+            newFriendItem->setData(Qt::UserRole, "SYSTEM_NEW_FRIEND"); // 极其特殊的魔法 ID
+            newFriendItem->setForeground(QBrush(QColor(255, 140, 0))); // 醒目的橘黄色
+            QFont f = newFriendItem->font();
+            f.setBold(true);
+            newFriendItem->setFont(f);
+            m_friendList->addItem(newFriendItem);
 
             for (int i = 0; i < data.size(); ++i) {
                 QJsonObject item = data[i].toObject();
@@ -350,12 +360,27 @@ void MainWindow::onTextMessageReceived(QString message)
     if (type == 1 || type == 4 || type == 5) {
         m_chatWidget->appendMessage(type, senderName, content, createTime, fileName, false);
     }
+
+    // ============================================================
+    // 🌟 新增业务逻辑 ：系统强制刷新指令 (Type 6)
+    // ============================================================
+    if (type == 6) {
+        qDebug() << "🎯 收到系统通知：强制刷新好友列表！";
+        fetchFriendList(); // 重新向服务器拉取最新的通讯录
+        return;
+    }
 }
 
 void MainWindow::onFriendItemClicked(QListWidgetItem *item)
 {
     QString friendId = item->data(Qt::UserRole).toString();
-    //QString nickname = item->text().split("[").first().trimmed(); // 去除 [在线] 标识
+
+    // 如果是新朋友，切换到管理面版
+    if (friendId == "SYSTEM_NEW_FRIEND") {
+        m_rightStack->setCurrentWidget(m_newFriendWidget);
+        m_newFriendWidget->loadPendingRequests(); // 触发网络请求拉取列表
+        return;
+    }
 
     // 1. 切换堆栈至聊天面板
     m_rightStack->setCurrentWidget(m_chatWidget);
@@ -441,7 +466,13 @@ void MainWindow::initMiddleSidebar()
 
     QPushButton* btnAddFriend = new QPushButton("+", m_searchHeader);
     btnAddFriend->setFixedSize(30, 30);
-    btnAddFriend->setObjectName("btnAddFriendTop"); // TODO后续会绑定这个按钮弹出添加好友窗口
+    btnAddFriend->setObjectName("btnAddFriendTop");
+
+    // 绑定点击事件，呼出独立弹窗
+    connect(btnAddFriend, &QPushButton::clicked, this, [=]() {
+        AddFriendDialog dialog(this);
+        dialog.exec(); // exec() 表示模态阻塞弹出，关掉弹窗前无法点击主界面
+    });
 
     searchLayout->addWidget(searchEdit);
     searchLayout->addWidget(btnAddFriend);
@@ -466,6 +497,12 @@ void MainWindow::initRightContainer()
     // 1. 初始化聊天组件并嵌入堆栈
     m_chatWidget = new ChatWidget(this);
     m_rightStack->addWidget(m_chatWidget);
+
+    m_newFriendWidget = new NewFriendWidget(this);
+    m_rightStack->addWidget(m_newFriendWidget);
+
+    // 监听同意好友的信号，静默刷新联系人列表！
+    connect(m_newFriendWidget, &NewFriendWidget::friendListChanged, this, &MainWindow::fetchFriendList);
 
     // 2. 默认显示空白页（可保持为 m_emptyPage，或直接默认显示聊天框但内容为空）
     m_emptyPage = new QWidget();

@@ -50,7 +50,7 @@ public class SimpleHandler extends SimpleChannelInboundHandler<TextWebSocketFram
             msg = objectMapper.readValue(text, Message.class);
         } catch (Exception e) {
             //log.error("JSON格式错误");
-            log.error("🔴 JSON解析大翻车！前端发来的原始文本是: [{}]", text, e);
+            log.error("🔴 JSON解析失败！前端发来的原始文本是: [{}]", text, e);
             return;
         }
 

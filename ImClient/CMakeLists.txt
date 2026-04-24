@@ -14,6 +14,10 @@ qt_add_executable(ImClient
     registerwindow.h registerwindow.cpp registerwindow.ui
     mainwindow.h mainwindow.cpp
     chatwidget.h chatwidget.cpp
+    addfrienddialog.h
+    addfrienddiolog.cpp
+    newfriendwidget.h
+    newfriendwidget.cpp
 
 
 )
