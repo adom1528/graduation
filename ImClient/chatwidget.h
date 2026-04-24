@@ -8,6 +8,20 @@
 #include <QTextBrowser>
 #include <QTextEdit>
 #include <QPushButton>
+#include <QQueue>
+
+/**
+ * @brief 内部消息包装体，用于排队渲染
+ */
+struct MessageItem {
+    int type;
+    QString senderName;
+    QString content;
+    QString createTime;
+    QString fileName;
+    bool isSelf;
+};
+
 
 /**
  * @brief 聊天面板组件
@@ -36,7 +50,11 @@ public:
      * @param createTime 消息创建时间
      * @param isSelf 是否为当前登录用户发送
      */
-    void appendMessage(int type, const QString& senderName, const QString& content, const QString& createTime, const QString& fileName, bool isSelf);
+    void appendMessage(int type, const QString& senderName,
+                       const QString& content,
+                       const QString& createTime,
+                       const QString& fileName,
+                       bool isSelf);
 
 signals:
     /**
@@ -67,9 +85,17 @@ private:
      */
     void bindEvents();
 
+    /**
+     * @brief processNextMessage 排队渲染引擎核心
+     */
+    void processNextMessage();
+
 private:
     QString m_currentTargetId;
     QString m_currentNickname;
+
+    QQueue<MessageItem> m_msgQueue;// 消息队列
+    bool m_isRendering = false; // 渲染锁：当前是否正在画图
 
     // UI 组件指针
     QLabel* m_lblHeaderName;        // 顶部聊天对象名称

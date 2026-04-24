@@ -76,6 +76,18 @@ private slots:
     void handleSendMessageRequest(const QString& targetId, const QString& content);
 
     /**
+     * @brief handleSendImageRequest 处理来自 ChatWidget 的图片发送请求
+     * @param targetId 目标用户ID
+     */
+    void handleSendImageRequest(const QString& targetId);
+
+    /**
+     * @brief handleSenFileRequest 处理来自 ChatWidget 的文件发送请求
+     * @param targetId
+     */
+    void handleSendFileRequest(const QString& targetId);
+
+    /**
      * @brief 处理好友列表项点击事件
      */
     void onFriendItemClicked(QListWidgetItem *item);
@@ -90,6 +102,11 @@ private slots:
      * @brief onDisconnected 安全断开 WebSocket 长连接
      */
     void onDisconnected();
+
+    /**
+     * @brief onHeartbeatTimeout 处理心跳超时的槽函数
+     */
+    void onHeartbeatTimeout();
 
     /**
     * @brief WebSocket 接收漏斗：解析收到的数据并路由至对应的 UI 组件

@@ -131,8 +131,15 @@ void ChatWidget::setCurrentChat(const QString& targetId, const QString& nickname
     m_lblHeaderName->setText(nickname);
     m_textBrowser->clear();
 
-    // 提示信息可在此处追加
-    m_textBrowser->append(QString("<div style='color:gray; text-align:center;'>--- 正在与 %1 聊天 ---</div>").arg(nickname));
+    // 防御性编程：切换聊天对象时，立刻清空前一个人的渲染队列，并解锁！
+    m_msgQueue.clear();
+    m_isRendering = false;
+
+
+    QString tipHtml = QString("<table width='100%' border='0'><tr><td align='center'>"
+                              "<span style='color:gray;'>--- 正在与 %1 聊天 ---</span>"
+                              "</td></tr></table>").arg(nickname);
+    m_textBrowser->append(tipHtml);
 }
 
 void ChatWidget::appendMessage(int type, const QString& senderName,
@@ -141,34 +148,99 @@ void ChatWidget::appendMessage(int type, const QString& senderName,
                                const QString& fileName,
                                bool isSelf)
 {
-    QString color = isSelf ? "#07C160" : "#0052D9"; // 绿色为己方，蓝色为对方
-    QString prefix = isSelf ? "我" : senderName;
-    if (type == 1 || type == 0) { // 文本消息 (有些旧系统可能没传 type，默认当文本处理)
-        // 基础富文本格式化
-        QString html = QString("<div style='margin-bottom: 10px;'>"
-                               "<span style='color:%1; font-weight:bold;'>[%2] %3: </span>"
-                               "<span>%4</span></div>")
-                           .arg(color, createTime, prefix, content);
-        m_textBrowser->append(html);
-    } else if (type == 4) { // 图片消息
-        QString url = content;
+    // 1. 将收到的消息打包成结构体
+    MessageItem item = {type, senderName, content, createTime, fileName, isSelf};
 
-        HttpManager::instance()->getBytes(url, [=](QByteArray imgData) {
-            // 【成功的回调】在这里处理图片二进制数据
-            QString base64Img = QString::fromLatin1(imgData.toBase64());
-            QString html = QString("<br><span style='color:%1;'>[%2] %3 (图片):</span><br><img src='data:image/png;base64,%4' width='150'>")
-                               .arg(color, createTime, prefix, base64Img);
-            m_textBrowser->append(html);
+    // 2. 塞入队列
+    m_msgQueue.enqueue(item);
 
-        }, [=](QString errorMsg) {
-                                              // 【失败的回调】打印错误信息
-                                              m_textBrowser->append(QString("<br><span style='color:gray;'>[%1 的图片加载失败: %2]</span>").arg(prefix, errorMsg));
-                                          });
-    }
-    else if (type == 5) { // 文件消息
-        QString fileHtml = QString("<br><span style='color:%1;'>[%2] %3 发送了文件: </span><br><a href='%4'>%5</a>")
-                               .arg(color, createTime, prefix, content, fileName);
-        m_textBrowser->append(fileHtml);
-    }
+    // 3. 呼叫引擎尝试处理
+    processNextMessage();
 }
 
+/**
+ * @brief 消息队列处理引擎
+ * 核心逻辑：采用 Qt 最稳定的 Table 布局法，彻底粉碎格式污染，强制实现左收右发
+ */
+void ChatWidget::processNextMessage()
+{
+    if (m_msgQueue.isEmpty() || m_isRendering) {
+        return;
+    }
+
+    m_isRendering = true;
+    MessageItem item = m_msgQueue.dequeue();
+
+    // 核心属性
+    QString align = item.isSelf ? "right" : "left";
+    QString prefixColor = item.isSelf ? "#07C160" : "#0052D9";
+    QString prefix = item.isSelf ? "我" : item.senderName;
+    QString renderSessionId = m_currentTargetId;
+
+    if (item.type == 1 || item.type == 0) {
+        // ============================================================
+        // 1. 文本消息
+        // ============================================================
+        QString html = QString(
+                           "<table width='100%' border='0' style='margin-top: 5px; margin-bottom: 5px;'>"
+                           "<tr><td align='%1'>"
+                           "<span style='color: %2; font-size: 12px;'>[%3] %4</span><br>"
+                           "<span style='color: black; font-size: 15px;'>%5</span>"
+                           "</td></tr></table>"
+                           ).arg(align, prefixColor, item.createTime, prefix, item.content);
+
+        m_textBrowser->append(html);
+        m_isRendering = false;
+        processNextMessage();
+    }
+    else if (item.type == 5) {
+        // ============================================================
+        // 2. 文件消息
+        // ============================================================
+        QString fileHtml = QString(
+                               "<table width='100%' border='0' style='margin-top: 5px; margin-bottom: 5px;'>"
+                               "<tr><td align='%1'>"
+                               "<span style='color: %2; font-size: 12px;'>[%3] %4 发送了文件</span><br>"
+                               "<a href='%5' style='color: #E6A23C; font-size: 15px; text-decoration: underline;'>[📁 %6]</a>"
+                               "</td></tr></table>"
+                               ).arg(align, prefixColor, item.createTime, prefix, item.content, item.fileName);
+
+        m_textBrowser->append(fileHtml);
+        m_isRendering = false;
+        processNextMessage();
+    }
+    else if (item.type == 4) {
+        // ============================================================
+        // 3. 图片消息
+        // ============================================================
+        QString url = item.content;
+        HttpManager::instance()->getBytes(url, [=](QByteArray imgData) {
+            if (m_currentTargetId != renderSessionId) {
+                m_isRendering = false;
+                processNextMessage();
+                return;
+            }
+
+            QString base64Img = QString::fromLatin1(imgData.toBase64());
+            QString html = QString(
+                               "<table width='100%' border='0' style='margin-top: 5px; margin-bottom: 5px;'>"
+                               "<tr><td align='%1'>"
+                               "<span style='color: %2; font-size: 12px;'>[%3] %4 发送了图片</span><br>"
+                               "<img src='data:image/png;base64,%5' width='150'>"
+                               "</td></tr></table>"
+                               ).arg(align, prefixColor, item.createTime, prefix, base64Img);
+
+            m_textBrowser->append(html);
+            m_isRendering = false;
+            processNextMessage();
+
+        }, [=](QString errorMsg) {
+                                              if (m_currentTargetId == renderSessionId) {
+                                                  m_textBrowser->append(QString("<table width='100%'><tr><td align='%1'><span style='color:gray;'>[%2 图片加载失败]</span></td></tr></table>")
+                                                                            .arg(align, prefix));
+                                              }
+                                              m_isRendering = false;
+                                              processNextMessage();
+                                          });
+    }
+}

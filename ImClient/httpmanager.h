@@ -12,17 +12,29 @@ class HttpManager : public QObject
 {
     Q_OBJECT
 public:
-    // 1. 全局单例模式获取实例
+    // 全局单例模式获取实例
     static HttpManager* instance();
 
-    // 2. Token 的存取（登录成功后存入，后续所有请求自动带上）
+    // Token 的存取（登录成功后存入，后续所有请求自动带上）
     void setToken(const QString& token);
     QString getToken() const;
 
-    // 3. 极其优雅的 POST JSON 封装 (使用 Lambda 回调)
+    // 极其优雅的 POST JSON 封装
     void postJson(const QString& url, const QJsonObject& data,
                   std::function<void(QJsonObject)> onSuccess,
                   std::function<void(QString)> onError);
+
+    /**
+     * @brief uploadFile 文件上传
+     * @param url
+     * @param filePath
+     * @param onSuccess
+     * @param onError
+     */
+    void uploadFile(const QString& url,
+                    const QString& filePath,
+                    std::function<void(QJsonObject)> onSuccess,
+                    std::function<void(QString)> onError);
 
     /**
      * @brief get 不带参数的get请求

@@ -2,6 +2,10 @@
 #include <QNetworkRequest>
 #include <QJsonParseError>
 #include <QUrlQuery>
+#include <QFile>
+#include <QHttpMultiPart>
+#include <QHttpPart>
+#include <QFileInfo>
 
 HttpManager* HttpManager::instance()
 {
@@ -56,6 +60,59 @@ void HttpManager::postJson(const QString& url, const QJsonObject& data,
             // 处理 HTTP 状态码错误
             onError(reply->errorString());
         }
+    });
+}
+
+
+void HttpManager::uploadFile(const QString& url,
+                             const QString& filePath,
+                             std::function<void(QJsonObject)> onSuccess,
+                             std::function<void(QString)> onError)
+{
+    // 尝试打开文件
+    QFile *file = new QFile(filePath);
+    if (!file->open(QIODevice::ReadOnly)) {
+        onError("无法读取需要上传的文件");
+        delete file;
+        return;
+    }
+
+    // 组装 multipart/form-data
+    QHttpMultiPart *multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+    QHttpPart filePart;
+    filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                       QVariant(QString("form-data; name=\"file\"; filename=\"%1\"")
+                                    .arg(QFileInfo(filePath).fileName())));
+    filePart.setBodyDevice(file);
+    file->setParent(multiPart); // 绑定生命周期
+    multiPart->append(filePart);
+
+    // 准备请求头
+    QNetworkRequest request((QUrl(url)));
+    if (!m_token.isEmpty()) {
+        request.setRawHeader("Authorization", ("Bearer " + m_token).toUtf8());
+    }
+
+    // 发送 POST 请求
+    QNetworkReply *reply = m_manager->post(request, multiPart);
+    multiPart->setParent(reply); // 让 multiPart 跟随 reply 自动销毁
+
+    // 处理结果
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            QByteArray responseData = reply->readAll();
+            QJsonParseError jsonError;
+            QJsonDocument doc = QJsonDocument::fromJson(responseData, &jsonError);
+
+            if (jsonError.error == QJsonParseError::NoError && doc.isObject()) {
+                onSuccess(doc.object());
+            } else {
+                onError("上传成功，但解析服务器返回的 JSON 失败");
+            }
+        } else {
+            onError(reply->errorString());
+        }
+        reply->deleteLater();
     });
 }
 
