@@ -44,8 +44,8 @@ void RegisterWindow::onBtnSubmitRegisterClicked()
     reqData["nickname"] = nickname; // 允许为空，后端会处理
     reqData["password"] = password;
 
-    qDebug() << nickname << "kongde";
-    // 🚀 发射请求 (走网关 9000 端口)
+    //qDebug() << nickname << "kongde";
+    // 发射请求 走网关 9000 端口
     HttpManager::instance()->postJson("http://localhost:9000/im-auth/auth/register", reqData,
                                       [=](QJsonObject res) {
                                           int code = res["code"].toInt();
@@ -57,6 +57,7 @@ void RegisterWindow::onBtnSubmitRegisterClicked()
 
                                               // 功成身退，关闭注册窗口
                                               this->accept();
+
                                           } else {
                                               // 后端返回的业务报错，比如“该账号已被注册”
                                               QMessageBox::warning(this, "注册失败", res["message"].toString());

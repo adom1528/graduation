@@ -8,13 +8,12 @@ qt_standard_project_setup()
 qt_add_executable(ImClient
     WIN32 MACOSX_BUNDLE
     main.cpp
-    mainwindow.cpp
-    mainwindow.h
-    mainwindow.ui
     httpmanager.h
     httpmanager.cpp
     loginwindow.h loginwindow.cpp loginwindow.ui
     registerwindow.h registerwindow.cpp registerwindow.ui
+    mainwindow.h mainwindow.cpp
+    chatwidget.h chatwidget.cpp
 
 
 )

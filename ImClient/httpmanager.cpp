@@ -1,6 +1,7 @@
 #include "httpmanager.h"
 #include <QNetworkRequest>
 #include <QJsonParseError>
+#include <QUrlQuery>
 
 HttpManager* HttpManager::instance()
 {
@@ -62,7 +63,9 @@ void HttpManager::get(const QString& url,
                       std::function<void(QJsonObject)> onSuccess,
                       std::function<void(QString)> onError)
 {
-    QNetworkRequest request((QUrl(url)));
+    QUrl qurl(url);
+
+    QNetworkRequest request(qurl);
 
     if (!m_token.isEmpty()) {
         request.setRawHeader("Authorization", ("Bearer " + m_token).toUtf8());
@@ -78,11 +81,80 @@ void HttpManager::get(const QString& url,
             QJsonDocument resDoc = QJsonDocument::fromJson(responseData, &jsonError);
 
             if (jsonError.error == QJsonParseError::NoError && resDoc.isObject()) {
+                //qDebug() << resDoc;
                 onSuccess(resDoc.object());
             } else {
                 onError("JSON 解析失败");
             }
         } else {
+            onError(reply->errorString());
+        }
+    });
+}
+
+void HttpManager::get(const QString& url, const QVariantMap& params,
+                      std::function<void(QJsonObject)> onSuccess,
+                      std::function<void(QString)> onError)
+{
+    QUrl qurl(url);
+
+    //如果有参数，拼接到URL后面
+    if (!params.isEmpty()) {
+        QUrlQuery query;
+        for (auto it = params.begin(); it != params.end(); ++it) {
+            query.addQueryItem(it.key(), it.value().toString());
+        }
+        qurl.setQuery(query);
+    }
+
+    QNetworkRequest request(qurl);
+
+    if (!m_token.isEmpty()) {
+        request.setRawHeader("Authorization", ("Bearer " + m_token).toUtf8());
+    }
+
+    QNetworkReply *reply = m_manager->get(request);
+
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        reply->deleteLater();
+        if (reply->error() == QNetworkReply::NoError) {
+            QByteArray responseData = reply->readAll();
+            QJsonParseError jsonError;
+            QJsonDocument resDoc = QJsonDocument::fromJson(responseData, &jsonError);
+
+            if (jsonError.error == QJsonParseError::NoError && resDoc.isObject()) {
+                //qDebug() << resDoc;
+                onSuccess(resDoc.object());
+            } else {
+                onError("JSON 解析失败");
+            }
+        } else {
+            onError(reply->errorString());
+        }
+    });
+}
+
+void HttpManager::getBytes(const QString& url,
+                           std::function<void(QByteArray)> onSuccess,
+                           std::function<void(QString)> onError)
+{
+    QUrl qurl(url);
+    QNetworkRequest request(qurl);
+
+    if (!m_token.isEmpty()) {
+        request.setRawHeader("Authorization", ("Bearer " + m_token).toUtf8());
+    }
+
+    QNetworkReply *reply = m_manager->get(request);
+
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        reply->deleteLater();
+        if (reply->error() == QNetworkReply::NoError) {
+            // 请求成功，直接把原始的二进制数据传给回调函数
+            QByteArray responseData = reply->readAll();
+            onSuccess(responseData);
+        } else {
+            // 请求失败
             onError(reply->errorString());
         }
     });

@@ -1,611 +1,461 @@
 #include "mainwindow.h"
-#include "./ui_mainwindow.h"
-#include <QUrlQuery>
-#include <QDateTime> // 用于显示时间
+#include "httpmanager.h"
+#include <QJsonObject>
+#include <QJsonDocument>
 #include <QJsonArray>
-#include <QDebug>
+#include <QLineEdit>
+#include <QUrl>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
 {
-    ui->setupUi(this);
+    // 初始化窗口基础属性
+    this->setMinimumSize(1000, 700);
+    this->setWindowTitle("IM 跨平台客户端");
 
+    // 搭建布局和皮肤
+    initGlobalLayout();
+    initStyleSheet();
 
+    //拉取好友列表，填充中间侧边栏
+    fetchFriendList();
 
-    // 2. 初始化网络
-    networkManager = new QNetworkAccessManager(this);
+    //启动WebSocket长连接
+    m_webSocket = new QWebSocket();
+    connect(m_webSocket, &QWebSocket::connected, this, &MainWindow::onConnected);
 
-    // 3. 初始化 WebSocket
-    webSocket = new QWebSocket();
-
-    // 初始化心跳定时器
-    heartbeatTimer = new QTimer(this);
-
-    // 4. 信号槽连接
-    connect(ui->btnExitLogin, &QPushButton::clicked, this, &MainWindow::onExitLoginClicked); //绑定退出登录
-    connect(ui->btnSend, &QPushButton::clicked, this, &MainWindow::onSendClicked); // 绑定发送信息
-    connect(ui->listFriends, &QListWidget::itemClicked, this, &MainWindow::onFriendItemClicked); // 绑定好友列表点击事件
-    connect(ui->btnAddFriend, &QPushButton::clicked, this, &MainWindow::onBtnAddFriendClicked); // 添加好友按钮
-    connect(heartbeatTimer, &QTimer::timeout, this, &MainWindow::onHeartbeatTimeout); // 心跳检测
-    connect(ui->btnSendImage, &QPushButton::clicked, this, &MainWindow::onSendImageClicked); // 发送图片
-    connect(ui->btnSendFile, &QPushButton::clicked, this, &MainWindow::onSendFileClicked); // 发送文件
-
-    // WebSocket 信号
-    connect(webSocket, &QWebSocket::connected, this, &MainWindow::onConnected);
-    connect(webSocket, &QWebSocket::textMessageReceived, this, &MainWindow::onTextMessageReceived);
-
-    // 允许聊天框直接调用操作系统的默认浏览器打开超链接
-    ui->textLog->setOpenExternalLinks(true);
 }
 
 MainWindow::~MainWindow()
 {
-    delete ui;
 }
 
-// 点击好友头像（目前是名字）
+void MainWindow::onConnected()
+{
+    qDebug() << "建立websocket连接";
+    QString time = QDateTime::currentDateTime().toString("HH:mm:ss");
+    m_chatWidget->appendMessage(0, "服务器", "服务器连接成功", time, "", false);
+    m_heartbeatTimer->start(30000); // 30秒发一次ping
+}
+
+void MainWindow::onDisconnected()
+{
+    // 断开心跳
+    if (m_heartbeatTimer->isActive()) {
+        m_heartbeatTimer->stop();
+    }
+
+    // 断开WebSocket长连接
+    if (m_webSocket != nullptr && m_webSocket->isValid()) {
+        m_webSocket->close();
+    }
+
+    //qDebug() << "断开WebSocket";
+}
+
+void MainWindow::fetchFriendList() {
+    // 确保路径走 9000 网关
+    QString url = "http://localhost:9000/im-server/friend/list";
+
+    HttpManager::instance()->get(url, [=](QJsonObject res) {
+        int code = res["code"].toInt();
+        if (code == 200) {
+            QJsonArray data = res["data"].toArray();
+            m_friendList->clear(); // 清空旧列表项
+
+            for (int i = 0; i < data.size(); ++i) {
+                QJsonObject item = data[i].toObject();
+                QString nickname = item["nickname"].toString();
+                QString friendId = item["id"].toVariant().toString();
+
+                // 创建列表项并存储 ID
+                QListWidgetItem* listItem = new QListWidgetItem(nickname, m_friendList);
+                listItem->setData(Qt::UserRole, friendId);
+                m_friendList->addItem(listItem);
+
+                // 更新全局好友映射表
+                m_friendMap.insert(friendId, nickname);
+            }
+        }
+    }, [=](QString err) {
+        qDebug() << "获取好友列表失败: " << err;
+    });
+}
+
+void MainWindow::fetchChatHistory(QString friendId)
+{
+    QString url = "http://localhost:9000/im-server/chat/history";
+    QVariantMap params;
+    params["friendId"] = friendId;
+
+    HttpManager::instance()->get(url, params, [=](QJsonObject res) {
+        int code = res["code"].toInt();
+        if (code == 200) {
+            QJsonArray responseDate = res["data"].toArray();
+
+            for (int i = 0; i < responseDate.size(); ++i) {
+                QJsonObject msgObj = responseDate[i].toObject();
+                //qDebug() << msgObj;
+                // 拆分信息
+                int type = msgObj["type"].toInt();
+                QString content = msgObj["content"].toString();
+                QString fileName = msgObj["fileName"].toString();
+                QString fromUserId = msgObj["fromUserId"].toVariant().toString();
+                QString createTime = msgObj["createTime"].toString().replace("T", " ");
+
+                // 判断是谁发的消息
+                bool CurrentUserSelf = !(friendId == fromUserId);
+                qDebug() << "发送消息用户:"<<fromUserId;
+                QString senderName = "我";
+
+                if (!CurrentUserSelf) {
+                    senderName = m_friendMap.contains(fromUserId) ? m_friendMap.value(fromUserId) : fromUserId;
+                }
+                m_chatWidget->appendMessage(type, senderName, content, createTime, fileName, CurrentUserSelf);
+            }
+        }
+
+    }, [=](QString err) {
+                                     qDebug() << "获取聊天记录失败：" << err;
+                                 });
+}
+
+void MainWindow::handleSendMessageRequest(const QString& targetId, const QString& content)
+{
+    if (!m_webSocket || !m_webSocket->isValid()) {
+        return;
+    }
+
+    // 构造标准的协议 JSON
+    QJsonObject json;
+    json["type"] = 1; // 单聊类型
+    json["toUserId"] = targetId.toLongLong();
+    json["content"] = content;
+
+    QJsonDocument doc(json);
+    m_webSocket->sendTextMessage(doc.toJson(QJsonDocument::Compact));
+}
+
+void MainWindow::onTextMessageReceived(QString message)
+{
+    if (message == "pong") return; // 心跳拦截
+
+    QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
+    if (doc.isNull() || !doc.isObject()) return;
+
+    QJsonObject obj = doc.object();
+    int type = obj["type"].toInt();
+
+    // 路由分发逻辑
+    if (type == 1) { // 处理单聊消息
+        QString fromUserId = obj["fromUserId"].toVariant().toString();
+        QString content = obj["content"].toString();
+        QString createTime = obj["createTime"].toString();
+        // 从缓存中获取发送者昵称
+        QString senderName = m_friendMap.value(fromUserId, "未知用户");
+
+        // 将消息注入 ChatWidget 进行渲染
+        m_chatWidget->appendMessage(1, senderName, content, createTime, "", false);
+    }
+    // ... 其他类型 (图片/文件) 的分发逻辑
+}
+
 void MainWindow::onFriendItemClicked(QListWidgetItem *item)
 {
-    // 1. 提取对方的雪花 ID
     QString friendId = item->data(Qt::UserRole).toString();
+    QString nickname = item->text().split("[").first().trimmed(); // 去除 [在线] 标识
 
-    // 2. 填入输入框，方便发消息
-    ui->editTargetId->setText(friendId);
+    // 1. 切换堆栈至聊天面板
+    m_rightStack->setCurrentWidget(m_chatWidget);
 
-    // 3. 切换聊天对象时，先把面板清空
-    ui->textLog->clear();
-    ui->textLog->append(QString(">> 正在拉取与【%1】的聊天记录...").arg(item->text()));
+    // 2. 设置聊天组件的上下文状态
+    m_chatWidget->setCurrentChat(friendId, nickname);
 
-    // 4. 呼叫刚才写好的函数，去后端搬运历史记录
+    // 3. 此处可并行调用 HttpManager 拉取历史记录并循环调用 m_chatWidget->appendMessage
     fetchChatHistory(friendId);
 }
 
-// 退出登录
-void MainWindow::onExitLoginClicked() {
-    // ================= 1. 物理断开 =================
-    onDisconnected();
 
-    // ================= 2. 记忆消除 =================
-    // 清空身份令牌和内存里的好友字典，防止“串号”
-    myToken.clear();
-    friendMap.clear();
 
-    // ================= 3. 现场清理 =================
-    // 清空 UI 上的所有历史痕迹
-    ui->textLog->clear();           // 清空聊天面板
-    ui->listFriends->clear();       // 清空好友列表
-    ui->editTargetId->clear();      // 清空当前选中的聊天对象输入框
-    ui->editSearchUser->clear();    // 清空搜索框
-
-}
-
-// WebSocket 连接成功
-void MainWindow::onConnected()
+//************************************** UI初始化 ************************************
+void MainWindow::initGlobalLayout()
 {
-    ui->textLog->append(">> 服务器连接成功！");
-    heartbeatTimer->start(30000); // 30秒发一次ping
+    m_centralWidget = new QWidget(this);
+    m_mainLayout = new QHBoxLayout(m_centralWidget);
+
+    // 设置主布局间距与边距为 0，确保三段式无缝衔接
+    m_mainLayout->setContentsMargins(0, 0, 0, 0);
+    m_mainLayout->setSpacing(0);
+
+    initLeftNavbar();
+    initMiddleSidebar();
+    initRightContainer();
+
+    setCentralWidget(m_centralWidget);
 }
 
-// WebSocket 断开
-void MainWindow::onDisconnected() {
-    //断开心跳
-    if (heartbeatTimer->isActive()) {
-        heartbeatTimer->stop();
-    }
-    // 掐断 WebSocket 长连接
-    if (webSocket != nullptr && webSocket->isValid()) {
-        webSocket->close();
-    }
-    qDebug() << "webSocket断开";
-}
-
-// 发ping检测心跳
-void MainWindow::onHeartbeatTimeout()
+void MainWindow::initLeftNavbar()
 {
-    // 确保连接活着才发心跳
-    if (webSocket != nullptr && webSocket->isValid()) {
-        webSocket->sendTextMessage("ping");
-        qDebug() << "已发送心跳包: ping";
-    }
+    m_leftNavbar = new QFrame(this);
+    m_leftNavbar->setFixedWidth(60);
+    m_leftNavbar->setObjectName("leftNavbar"); // 用于 QSS 样式表定位
+
+    m_navLayout = new QVBoxLayout(m_leftNavbar);
+    m_navLayout->setContentsMargins(5, 20, 5, 20);
+    m_navLayout->setSpacing(20);
+
+    // 导航栏初始化
+    m_btnAvatar = new QPushButton("头像", m_leftNavbar);
+    m_btnAvatar->setFixedSize(40, 40);
+    m_btnAvatar->setObjectName("btnAvatar");
+
+    m_btnChat = new QPushButton("消息", m_leftNavbar);
+    m_btnChat->setFixedSize(40, 40);
+
+    m_btnContact = new QPushButton("联系人", m_leftNavbar);
+    m_btnContact->setFixedSize(40, 40);
+
+    m_navLayout->addWidget(m_btnAvatar);
+    m_navLayout->addWidget(m_btnChat);
+    m_navLayout->addWidget(m_btnContact);
+    m_navLayout->addStretch(); // 底部弹簧置顶按钮
+
+    m_mainLayout->addWidget(m_leftNavbar);
 }
 
-// 收到消息
-void MainWindow::onTextMessageReceived(QString message)
+void MainWindow::initMiddleSidebar()
 {
-    if (message == "pong") {
-        return; // 拦截心跳
-    }
+    m_middleSidebar = new QFrame(this);
+    m_middleSidebar->setFixedWidth(250);
+    m_middleSidebar->setObjectName("middleSidebar");
 
-    QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
-    if (!doc.isNull() && doc.isObject()) {
-        QJsonObject obj = doc.object();
-        int type = obj["type"].toInt();
+    m_sidebarLayout = new QVBoxLayout(m_middleSidebar);
+    m_sidebarLayout->setContentsMargins(0, 0, 0, 0);
+    m_sidebarLayout->setSpacing(0);
 
-        // 🌟 1. 拦截广播信息 (type == 3)，这段逻辑独立于聊天框，保持原样
-        if (type == 3) {
-            QString friendId = obj["userId"].toVariant().toString();
-            QString status = obj["content"].toString();
-            if (friendMap.contains(friendId)) {
-                QString nickname = friendMap.value(friendId);
-                for (int i = 0; i < ui->listFriends->count(); ++i) {
-                    QListWidgetItem *item = ui->listFriends->item(i);
-                    if (item->data(Qt::UserRole).toString() == friendId) {
-                        if (status == "online") {
-                            item->setText(nickname + " [在线]");
-                            item->setForeground(QBrush(QColor(46, 139, 87)));
-                            QFont font = item->font(); font.setBold(true); item->setFont(font);
-                        } else {
-                            item->setText(nickname + " [离线]");
-                            item->setForeground(QBrush(Qt::gray));
-                            QFont font = item->font(); font.setBold(false); item->setFont(font);
-                        }
-                        break;
-                    }
-                }
-            }
-            return;
+    // 搜索与添加功能区
+    m_searchHeader = new QWidget(m_middleSidebar);
+    m_searchHeader->setFixedHeight(60);
+    m_searchHeader->setObjectName("searchHeader");
+
+    QHBoxLayout* searchLayout = new QHBoxLayout(m_searchHeader);
+    searchLayout->setContentsMargins(10, 15, 10, 15);
+    searchLayout->setSpacing(10);
+
+    QLineEdit* searchEdit = new QLineEdit(m_searchHeader);
+    searchEdit->setPlaceholderText("搜索");
+    searchEdit->setFixedHeight(30);
+    searchEdit->setObjectName("searchEdit");
+
+    QPushButton* btnAddFriend = new QPushButton("+", m_searchHeader);
+    btnAddFriend->setFixedSize(30, 30);
+    btnAddFriend->setObjectName("btnAddFriendTop"); // TODO后续会绑定这个按钮弹出添加好友窗口
+
+    searchLayout->addWidget(searchEdit);
+    searchLayout->addWidget(btnAddFriend);
+
+    m_friendList = new QListWidget(m_middleSidebar);
+    m_friendList->setFrameShape(QFrame::NoFrame);
+
+    m_sidebarLayout->addWidget(m_searchHeader);
+    m_sidebarLayout->addWidget(m_friendList);
+
+    m_mainLayout->addWidget(m_middleSidebar);
+
+    // 在 initMiddleSidebar 中添加
+    connect(m_friendList, &QListWidget::itemClicked, this, &MainWindow::onFriendItemClicked);
+}
+
+void MainWindow::initRightContainer()
+{
+    m_rightStack = new QStackedWidget(this);
+    m_rightStack->setObjectName("rightStack");
+
+    // 1. 初始化聊天组件并嵌入堆栈
+    m_chatWidget = new ChatWidget(this);
+    m_rightStack->addWidget(m_chatWidget);
+
+    // 2. 默认显示空白页（可保持为 m_emptyPage，或直接默认显示聊天框但内容为空）
+    m_emptyPage = new QWidget();
+    m_rightStack->addWidget(m_emptyPage);
+    m_rightStack->setCurrentWidget(m_emptyPage);
+
+    // 3. 建立信号连接：当 ChatWidget 请求发送消息时，由 MainWindow 代理发送
+    connect(m_chatWidget, &ChatWidget::textMessageSendRequested,
+            this, &MainWindow::handleSendMessageRequest);
+
+    m_mainLayout->addWidget(m_rightStack, 1);
+}
+
+// QSS 规则集
+void MainWindow::initStyleSheet()
+{
+    /* * 采用 C++11 Raw String (R"(...)") 语法，无需转义换行符。
+     * 色彩规范 (Palette):
+     * - Left Navbar: 深邃黑灰 (#2E2E2E)
+     * - Middle Sidebar: 柔和浅灰 (#F0F0F0)
+     * - Right Workspace: 纯白 (#FFFFFF)
+     * - 主题高亮色 (Active): 微信绿 (#07C160)
+     */
+    QString qss = R"(
+        /* =========================================
+           1. 全局基础重置 (Global Reset)
+           ========================================= */
+        QWidget {
+            font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+            font-size: 14px;
         }
 
-        // 🌟 2. 处理聊天消息 (type 1, 4, 5) —— 直接送入漏斗！
-        QString fromUidStr = obj["fromUserId"].toVariant().toString();
-        QString content = obj["content"].toString();
-        QString fileName = obj["fileName"].toString();
-
-        // 从字典获取昵称，拿不到就显示ID
-        QString nickname = friendMap.value(fromUidStr, fromUidStr);
-
-        // 默认收到 WebSocket 的都是对方发来的（isSelf = false）
-        int msgType = (type == 0) ? 1 : type; // 容错处理
-        renderMessageToUI(msgType, nickname, content, fileName, false);
-
-    } else {
-        // 系统文本消息
-        ui->textLog->append(">> 系统: " + message);
-    }
-}
-
-// 发送按钮点击
-void MainWindow::onSendClicked()
-{
-    QString msgContent = ui->editMsg->text().trimmed();
-    QString targetIdStr = ui->editTargetId->text().trimmed();
-
-    if (msgContent.isEmpty() || targetIdStr.isEmpty()) {
-        QMessageBox::warning(this, "提示", "请输入内容和对方ID");
-        return;
-    }
-
-    // --- 构造 JSON ---
-    QJsonObject json;
-    json["toUserId"] = targetIdStr.toLongLong(); // 必须转成数字，匹配后端的 Long
-    json["content"] = msgContent;
-    json["type"] = 1; // 单聊
-
-    // 转成字符串
-    QJsonDocument doc(json);
-    QString jsonString = doc.toJson(QJsonDocument::Compact);
-
-    // 发送
-    webSocket->sendTextMessage(jsonString);
-
-    // 清空输入框
-    ui->editMsg->clear();
-
-    // 本地显示 (模拟微信，自己发的立刻上屏)
-    QString displayTargetName = targetIdStr; // 默认显示目标id
-    if (friendMap.contains(targetIdStr)) {
-        displayTargetName = friendMap.value(targetIdStr); // 替换名称
-    }
-    QString time = QDateTime::currentDateTime().toString("HH:mm:ss");
-    renderMessageToUI(1, "我", msgContent, "", true);
-}
-
-// 拉取好友列表
-void MainWindow::fetchFriendList()
-{
-    // 1. 组装 URL（走网关）
-    QUrl url("http://localhost:9000/im-auth/friend/list");
-    QNetworkRequest request(url);
-
-    // 2. 挂载 Token
-    QString authHeader = "Bearer " + myToken;
-    request.setRawHeader("Authorization", authHeader.toUtf8());
-
-    // 3. 发射 GET 请求
-    QNetworkReply *reply = networkManager->get(request);
-
-    // 4. 处理响应
-    connect(reply, &QNetworkReply::finished, this, [=]() {
-        if (reply->error() == QNetworkReply::NoError) {
-            QByteArray responseData = reply->readAll();
-            QJsonDocument doc = QJsonDocument::fromJson(responseData);
-            QJsonObject rootObj = doc.object();
-
-            if (rootObj["code"].toInt() == 200) {
-                QJsonArray dataArray = rootObj["data"].toArray();
-                ui->listFriends->clear(); // 清空旧列表
-
-                // 遍历 JSON 数组
-                for (int i = 0; i < dataArray.size(); ++i) {
-                    QJsonObject friendObj = dataArray[i].toObject();
-
-                    // 提取昵称和雪花ID（注意雪花ID在JSON里由于太大，通常建议当字符串处理，Qt 用 toVariant().toString() 最稳）
-                    QString nickname = friendObj["nickname"].toString();
-                    QString friendId = friendObj["id"].toVariant().toString();
-                    bool isOnline = friendObj["isOnline"].toBool();
-
-                    QString displayText = nickname;
-                    if (isOnline) {
-                        displayText += "[在线]";
-                    } else {
-                        displayText += "[离线]";
-                    }
-
-                    // 创建列表项，显示昵称
-                    QListWidgetItem *item = new QListWidgetItem(displayText);
-                    // 把雪花 ID 作为“用户数据”悄悄绑定在这个 Item 上，前端看不见，但代码能拿到！
-                    item->setData(Qt::UserRole, friendId);
-
-                    if (isOnline) {
-                        // 在线状态：绿色
-                        item->setForeground(QBrush(QColor(43, 139, 87)));
-                        // 加粗字体
-                        QFont font = item->font();
-                        font.setBold(true);
-                        item->setFont(font);
-                    } else {
-                        item->setForeground(QBrush(Qt::gray));
-                    }
-
-                    ui->listFriends->addItem(item);
-                    friendMap.insert(friendId, nickname); // 好友信息存入字典
-                }
-            } else {
-                ui->textLog->append(">> 获取好友列表失败：" + rootObj["message"].toString());
-            }
-        }
-        reply->deleteLater();
-    });
-}
-
-// 实现添加好友
-void MainWindow::onBtnAddFriendClicked()
-{
-    QString targetUsername = ui->editSearchUser->text().trimmed();
-    if (targetUsername.isEmpty()) {
-        QMessageBox::warning(this, "提示", "请输入要添加的好友账号");
-        return;
-    }
-
-    // 禁用按钮防止狂点
-    ui->btnAddFriend->setEnabled(false);
-
-    // GET 搜索用户
-    QUrl searchUrl("http://localhost:9000/im-auth/friend/search");
-    QUrlQuery query;
-    query.addQueryItem("username", targetUsername);
-    searchUrl.setQuery(query);
-
-    QNetworkRequest searchReq(searchUrl);
-    searchReq.setRawHeader("Authorization", ("Bearer " + myToken).toUtf8());
-
-    QNetworkReply *searchReply = networkManager->get(searchReq);
-
-    connect(searchReply, &QNetworkReply::finished, this, [=]() {
-        if (searchReply->error() == QNetworkReply::NoError) {
-            QJsonDocument doc = QJsonDocument::fromJson(searchReply->readAll());
-            QJsonObject rootObj = doc.object();
-
-            if (rootObj["code"].toInt() == 200) {
-                // 搜到人了！提取他的雪花 ID
-                QString targetId = rootObj["data"].toObject()["id"].toVariant().toString();
-
-                // 第二发子弹：POST 添加好友
-                QUrl addUrl("http://localhost:9000/im-auth/friend/add");
-                QNetworkRequest addReq(addUrl);
-                addReq.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-                addReq.setRawHeader("Authorization", ("Bearer " + myToken).toUtf8());
-
-                QUrlQuery addParams;
-                addParams.addQueryItem("targetUserId", targetId);
-                QByteArray addData = addParams.toString(QUrl::FullyEncoded).toUtf8();
-
-                QNetworkReply *addReply = networkManager->post(addReq, addData);
-
-                connect(addReply, &QNetworkReply::finished, this, [=]() {
-                    if (addReply->error() == QNetworkReply::NoError) {
-                        QJsonDocument addDoc = QJsonDocument::fromJson(addReply->readAll());
-                        QJsonObject addRoot = addDoc.object();
-
-                        if (addRoot["code"].toInt() == 200) {
-                            QMessageBox::information(this, "成功", "添加好友成功！");
-                            ui->editSearchUser->clear(); // 清空输入框
-
-                            // 静默刷新好友列表！
-                            fetchFriendList();
-                        } else {
-                            QMessageBox::critical(this, "添加失败", addRoot["message"].toString());
-                        }
-                    } else {
-                        QMessageBox::critical(this, "网络错误", "添加请求发送失败");
-                    }
-                    addReply->deleteLater();
-                    ui->btnAddFriend->setEnabled(true); // 恢复按钮
-                });
-
-            } else {
-                QMessageBox::critical(this, "搜索失败", rootObj["message"].toString());
-                ui->btnAddFriend->setEnabled(true);
-            }
-        } else {
-            QMessageBox::critical(this, "网络错误", "搜索请求发送失败");
-            ui->btnAddFriend->setEnabled(true);
-        }
-        searchReply->deleteLater();
-    });
-}
-
-// 点击好友后显示历史聊天记录
-void MainWindow::fetchChatHistory(QString friendId)
-{
-    // 1. 组装请求 URL
-    QUrl url("http://localhost:9000/im-server/chat/history");
-    QUrlQuery query;
-    query.addQueryItem("friendId", friendId);
-    url.setQuery(query);
-
-    QNetworkRequest request(url);
-    request.setRawHeader("Authorization", ("Bearer " + myToken).toUtf8());
-
-    // 2. 发射 GET 请求
-    QNetworkReply *reply = networkManager->get(request);
-
-    connect(reply, &QNetworkReply::finished, this, [=]() {
-        if (reply->error() == QNetworkReply::NoError) {
-            QByteArray responseData = reply->readAll();
-            QJsonDocument doc = QJsonDocument::fromJson(responseData);
-            QJsonObject rootObj = doc.object();
-
-            if (rootObj["code"].toInt() == 200) {
-                // 拿到历史记录数组！
-                QJsonArray dataArray = rootObj["data"].toArray();
-
-                // 3. 遍历渲染上屏
-                for (int i = 0; i < dataArray.size(); ++i) {
-                    QJsonObject msgObj = dataArray[i].toObject();
-
-                    int type = msgObj["type"].toInt();
-                    QString content = msgObj["content"].toString();
-                    QString fileName = msgObj["fileName"].toString();
-                    QString fromUserId = msgObj["fromUserId"].toVariant().toString();
-                    // 后端传过来的时间通常是 "2026-04-01T13:39:16"，把 T 换成空格变好看点
-                    //QString createTime = msgObj["createTime"].toString().replace("T", " ");
-
-                    // 核心判断
-                    bool isSelf = !(fromUserId == friendId);
-                    QString senderName = "我";
-                    if (!isSelf) {
-                        // 如果是对方发的，去字典里把他的名字查出来！
-                        senderName = friendMap.contains(fromUserId) ? friendMap.value(fromUserId) : fromUserId;
-                    }
-
-                    // 一键渲染上屏！
-                    renderMessageToUI(type, senderName, content, fileName, isSelf);
-                }
-                //ui->textLog->append("---------------- 历史消息分割线 ----------------");
-            } else {
-                ui->textLog->append(">> 拉取历史记录失败：" + rootObj["message"].toString());
-            }
-        } else {
-            ui->textLog->append(">> 网络错误，无法拉取历史记录");
-        }
-        reply->deleteLater();
-    });
-}
-
-// 发送图片
-void MainWindow::onSendImageClicked()
-{
-    // 先检查有没有选中聊天对象
-    QString targetId = ui->editTargetId->text();
-    if (targetId.isEmpty()) {
-        QMessageBox::warning(this, "操作提示", "请先在右侧好友列表中选择一个聊天对象！");
-        return; // 拒绝执行后续的所有操作！
-    }
-    // 1. 唤起系统文件选择框，只允许选图片
-    QString filePath = QFileDialog::getOpenFileName(this, "选择要发送的图片", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif)");
-    if (filePath.isEmpty()) {
-        return; // 用户取消了选择
-    }
-
-    // 2. 准备物理文件
-    QFile *file = new QFile(filePath);
-    if (!file->open(QIODevice::ReadOnly)) {
-        qDebug() << "无法打开文件:" << filePath;
-        delete file;
-        return;
-    }
-
-    // 3. 组装 multipart/form-data 报文 (就跟刚才 Postman 做的动作一模一样)
-    QHttpMultiPart *multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
-    QHttpPart imagePart;
-    // 设置请求头：指明这是一个叫 "file" 的表单字段，并附带原文件名
-    imagePart.setHeader(QNetworkRequest::ContentDispositionHeader,
-                        QVariant(QString("form-data; name=\"file\"; filename=\"%1\"").arg(QFileInfo(filePath).fileName())));
-    imagePart.setBodyDevice(file);
-    file->setParent(multiPart); // 让 file 的生命周期跟着 multiPart 走，防止内存泄漏
-    multiPart->append(imagePart);
-
-    // 4. 瞄准后端的上传接口
-    QNetworkRequest request(QUrl("http://localhost:9002/file/upload"));
-    request.setRawHeader("Authorization", "Bearer " + myToken.toUtf8());
-
-    // 5. 扣动扳机，异步发射！
-    QNetworkAccessManager *manager = new QNetworkAccessManager(this);
-    QNetworkReply *reply = manager->post(request, multiPart);
-    multiPart->setParent(reply); // 自动释放内存
-
-    // 6. 蹲守上传结果
-    connect(reply, &QNetworkReply::finished, this, [=]() {
-        if (reply->error() == QNetworkReply::NoError) {
-            // 读取后端返回的 JSON (里面藏着 MinIO 的 URL)
-            QByteArray responseData = reply->readAll();
-            QJsonDocument doc = QJsonDocument::fromJson(responseData);
-            QJsonObject rootObj = doc.object();
-
-            if (rootObj["code"].toInt() == 200) {
-                QString minioUrl = rootObj["data"].toString();
-                qDebug() << "文件上传成功，拿到 URL:" << minioUrl;
-
-                // 上传成功后，把 URL 打包成 type=4 的 WebSocket 消息发给对方！
-                if (!targetId.isEmpty() && webSocket != nullptr && webSocket->isValid()) {
-                    QJsonObject msgObj;
-                    msgObj["type"] = 4; // 协议：4代表图片/文件
-                    msgObj["toUserId"] = targetId.toLongLong();
-                    msgObj["content"] = minioUrl;
-
-                    QJsonDocument sendDoc(msgObj);
-                    webSocket->sendTextMessage(sendDoc.toJson(QJsonDocument::Compact));
-
-                    QString imgHtml = QString("<br><span style='color:green;'>我 (发了一张图片):</span><br><img src='file:///%1' width='150'>").arg(filePath);
-                    ui->textLog->append(imgHtml); // 直接追加带格式的 HTML 代码;
-                    //renderMessageToUI(4, "我", minioUrl, "", true);
-                }
-            } else {
-                qDebug() << "上传失败，服务器返回:" << rootObj["msg"].toString();
-            }
-        } else {
-            qDebug() << "网络请求报错:" << reply->errorString();
+        /* 去除所有 QFrame 自带的边框，实现无缝拼接 */
+        QFrame {
+            border: none;
         }
 
-        reply->deleteLater();
-        manager->deleteLater();
-    });
-}
-
-// 发送文件
-void MainWindow::onSendFileClicked()
-{
-    // 1.
-    QString targetId = ui->editTargetId->text();
-    if (targetId.isEmpty()) {
-        QMessageBox::warning(this, "操作提示", "请先在左侧好友列表中选择一个聊天对象！");
-        return;
-    }
-
-    // 2. 唤起文件选择框，允许选择所有类型的文件 (*.*)
-    QString filePath = QFileDialog::getOpenFileName(this, "选择要发送的文件", "", "All Files (*.*)");
-    if (filePath.isEmpty()) {
-        return; // 用户取消了选择
-    }
-
-    //  提取真实文件名 (比如 "需求文档.docx")
-    QFileInfo fileInfo(filePath);
-    QString fileName = fileInfo.fileName();
-
-    // 3. 准备物理文件
-    QFile *file = new QFile(filePath);
-    if (!file->open(QIODevice::ReadOnly)) {
-        qDebug() << "无法打开文件:" << filePath;
-        delete file;
-        return;
-    }
-
-    // 4. 组装 multipart/form-data 报文 (和图片一模一样)
-    QHttpMultiPart *multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
-    QHttpPart filePart;
-    filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
-                       QVariant(QString("form-data; name=\"file\"; filename=\"%1\"").arg(fileName)));
-    filePart.setBodyDevice(file);
-    file->setParent(multiPart);
-    multiPart->append(filePart);
-
-    // 5. 瞄准后端上传接口
-    QNetworkRequest request(QUrl("http://localhost:9002/file/upload"));
-    request.setRawHeader("Authorization", "Bearer " + myToken.toUtf8());
-
-    // 6. 异步发射
-    QNetworkAccessManager *manager = new QNetworkAccessManager(this);
-    QNetworkReply *reply = manager->post(request, multiPart);
-    multiPart->setParent(reply);
-
-    // 7. 蹲守结果
-    connect(reply, &QNetworkReply::finished, this, [=]() {
-        if (reply->error() == QNetworkReply::NoError) {
-            QByteArray responseData = reply->readAll();
-            QJsonDocument doc = QJsonDocument::fromJson(responseData);
-            QJsonObject rootObj = doc.object();
-
-            if (rootObj["code"].toInt() == 200) {
-                QString minioUrl = rootObj["data"].toString();
-                qDebug() << "文件上传成功，拿到 URL:" << minioUrl;
-
-                // 组装 type=5 的 WebSocket 消息
-                if (webSocket != nullptr && webSocket->isValid()) {
-                    QJsonObject msgObj;
-                    msgObj["type"] = 5;
-                    msgObj["toUserId"] = targetId.toLongLong();
-                    msgObj["content"] = minioUrl;
-                    msgObj["fileName"] = fileName;
-
-                    QJsonDocument sendDoc(msgObj);
-                    webSocket->sendTextMessage(sendDoc.toJson(QJsonDocument::Compact));
-
-                    // 发送方本地渲染：直接用 <a> 标签做个超链接
-                    QString fileHtml = QString("<br><span style='color:green;'>我 (发送了文件): </span><a href='%1'>%2</a>")
-                                           .arg(minioUrl).arg(fileName);
-                    renderMessageToUI(5,"我", minioUrl, fileName, true);
-            } else {
-                qDebug() << "上传失败:" << rootObj["msg"].toString();
-            }
-        } else {
-            qDebug() << "网络请求报错:" << reply->errorString();
+        /* =========================================
+           2. 左侧导航栏 (Left Navbar)
+           ========================================= */
+        #leftNavbar {
+            background-color: #2E2E2E;
         }
 
-        reply->deleteLater();
-        manager->deleteLater();
-    }
-    });
+        /* 导航栏按钮的基础样式 */
+        #leftNavbar QPushButton {
+            background-color: transparent;
+            color: #888888;
+            border: none;
+            border-radius: 4px; /* 轻微圆角 */
+        }
+
+        /* 导航栏按钮的悬停交互 (Hover) */
+        #leftNavbar QPushButton:hover {
+            background-color: #3D3D3D;
+        }
+
+        /* 头像占位符美化 */
+        #leftNavbar #btnAvatar {
+            background-color: #07C160; /* 微信绿 */
+            color: #FFFFFF;
+            border-radius: 20px; /* 变成正圆形 */
+            font-weight: bold;
+        }
+
+        /* =========================================
+           3. 中间侧边栏 (Middle Sidebar)
+           ========================================= */
+        #middleSidebar {
+            background-color: #F0F0F0;
+            /* 右侧添加一条极细的分割线，增强视觉层次 */
+            border-right: 1px solid #E0E0E0;
+        }
+
+        /* 好友列表控件样式 */
+        QListWidget {
+            background-color: transparent;
+            outline: none; /* 去除点击时产生的虚线框 */
+        }
+
+        /* 列表项基础样式 */
+        QListWidget::item {
+            height: 64px; /* 统一行高 */
+            padding-left: 10px;
+            color: #000000;
+        }
+
+        /* 列表项悬停交互 */
+        QListWidget::item:hover {
+            background-color: #DEDEDE;
+        }
+
+        /* 列表项选中状态 (使用微信级高亮灰) */
+        QListWidget::item:selected {
+            background-color: #C6C6C6;
+            color: #000000;
+        }
+
+        /* =========================================
+           4. 右侧工作区 (Right Workspace)
+           ========================================= */
+        #rightStack {
+            background-color: #FFFFFF;
+        }
+
+        /* 搜索区域美化 */
+        #searchHeader {
+            border-bottom: 1px solid #E0E0E0; /* 增加底部阴影分割线 */
+        }
+        #searchEdit {
+            background-color: #E2E2E2;
+            border: none;
+            border-radius: 4px;
+            padding-left: 10px;
+            color: #333333
+        }
+        #btnAddFriendTop {
+            background-color: #E2E2E2;
+            border: none;
+            border-radius: 4px;
+            font-size: 18px;
+            color: #333333;
+        }
+        #btnAddFriendTop:hover {
+            background-color: #D2D2D2;
+        }
+
+        /* 右侧聊天组件强化 */
+        #chatHistory {
+            background-color: #F5F5F5; /* 聊天背景设为浅灰，区分于纯白 */
+            border: none;
+            color: #000000;
+            border-bottom: 1px solid #E0E0E0; /* 强化聊天记录和工具栏的分割线 */
+        }
+        #chatInput {
+            color: #000000;             /* 文字颜色为纯黑 */
+            background-color: #FFFFFF;  /* 背景颜色为纯白 */
+            font-size: 14px;            /* 字体大小 */
+            font-family: "Microsoft YaHei"; /* 字体 */
+            border: 1px solid #CCCCCC;  /* 边框颜色 */
+            border-radius: 4px;         /* 边框圆角，看起来更现代 */
+            padding: 5px;
+        }
+
+        /* 强化发送按钮 */
+        #btnSendMsg {
+            background-color: #E9E9E9;
+            color: #07C160;
+            border: 1px solid #E0E0E0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        #btnSendMsg:hover {
+            background-color: #1AAD19;
+            color: #FFFFFF;
+        }
+
+        #btnSendImage {
+            background-color: #E9E9E9;
+            color: #07C160;
+            border: 1px solid #E0E0E0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        #btnSendImage:hover {
+            background-color: #1AAD19;
+            color: #FFFFFF;
+        }
+
+        #btnSendFile {
+            background-color: #E9E9E9;
+            color: #07C160;
+            border: 1px solid #E0E0E0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        #btnSendFile:hover {
+            background-color: #1AAD19;
+            color: #FFFFFF;
+        }
+    )";
+
+    // 将组装好的样式表应用到当前主窗口
+    this->setStyleSheet(qss);
 }
-
-// 富文本编辑
-void MainWindow::renderMessageToUI(int type, const QString &senderName, const QString &content, const QString &fileName, bool isSelf)
-{
-    // 1. 判断颜色、称呼和当前时间
-    QString color = isSelf ? "green" : "blue";
-    QString prefix = isSelf ? "我" : senderName;
-    QString time = QDateTime::currentDateTime().toString("HH:mm:ss");
-
-    // 2. 统一分发渲染逻辑
-    if (type == 1 || type == 0) { // 文本消息 (有些旧系统可能没传 type，默认当文本处理)
-        QString html = QString("<br><span style='color:%1;'>[%2] %3: </span>%4")
-                           .arg(color, time, prefix, content);
-        ui->textLog->append(html);
-    }
-    else if (type == 4) { // 图片消息
-        QNetworkRequest request((QUrl(content)));
-        QNetworkAccessManager *manager = new QNetworkAccessManager(this);
-        QNetworkReply *reply = manager->get(request);
-
-        connect(reply, &QNetworkReply::finished, this, [=]() {
-            if (reply->error() == QNetworkReply::NoError) {
-                QByteArray imgData = reply->readAll();
-                QString base64Img = QString::fromLatin1(imgData.toBase64());
-                QString html = QString("<br><span style='color:%1;'>[%2] %3 (图片):</span><br><img src='data:image/png;base64,%4' width='150'>")
-                                   .arg(color, time, prefix, base64Img);
-                ui->textLog->append(html);
-            } else {
-                ui->textLog->append(QString("<br><span style='color:gray;'>[%1 的图片加载失败]</span>").arg(prefix));
-            }
-            reply->deleteLater();
-            manager->deleteLater();
-        });
-    }
-    else if (type == 5) { // 文件消息
-        QString fileHtml = QString("<br><span style='color:%1;'>[%2] %3 发送了文件: </span><br><a href='%4'>%5</a>")
-                               .arg(color, time, prefix, content, fileName);
-        ui->textLog->append(fileHtml);
-    }
-}
-

@@ -44,10 +44,10 @@ void LoginWindow::onLoginClicked()
                                           int code = res["code"].toInt();
                                           if (code == 200) {
                                               QString token = res["data"].toString();
-                                              // 1. 把 Token 存入核武器的弹药库，以后所有请求自动带上！
+                                              // 把 Token 存入，以后所有请求自动带上
                                               HttpManager::instance()->setToken(token);
 
-                                              // 2. 核心魔法：告诉主程序，登录成功啦，你可以关闭这个窗口了！
+                                              // 登录成功啦，关闭窗口
                                               this->accept();
                                           } else {
                                               QMessageBox::warning(this, "登录失败", res["message"].toString());
@@ -60,7 +60,7 @@ void LoginWindow::onLoginClicked()
                                       );
 }
 
-// 跳转登录
+// 跳转注册
 void LoginWindow::onBtnGoToRegisterClicked()
 {
     // 实例化注册弹窗 (传入 this 作为父对象，保证内存安全释放)
@@ -71,7 +71,7 @@ void LoginWindow::onBtnGoToRegisterClicked()
         // 自动把刚刚注册成功的账号，填进登录界的账号输入框里！
         ui->lineEditUsername->setText(regUsername);
 
-        // 顺手清空密码框，让用户体验拉满
+        // 顺手清空密码框
         ui->lineEditPassword->clear();
 
         // 让密码框直接获取光标焦点，用户连鼠标都不用点，直接输密码就能登！

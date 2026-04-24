@@ -16,7 +16,7 @@ public:
     ~RegisterWindow();
 
 signals:
-    // 🌟 K导师的魔法信号：注册成功后，把账号发射出去，让登录界面去接！
+    // 信号：注册成功后，把账号发射出去，让登录界面去接
     void registerSuccess(const QString& username);
 
 private slots:
