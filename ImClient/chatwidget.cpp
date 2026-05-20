@@ -138,7 +138,7 @@ void ChatWidget::setCurrentChat(const QString& targetId, const QString& nickname
 
     QString tipHtml = QString("<table width='100%' border='0'><tr><td align='center'>"
                               "<span style='color:gray;'>--- 正在与 %1 聊天 ---</span>"
-                              "</td></tr></table>").arg(nickname);
+                              "</td></tr></table>").arg(m_currentNickname);
     m_textBrowser->append(tipHtml);
 }
 

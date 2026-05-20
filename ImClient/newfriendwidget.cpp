@@ -5,6 +5,28 @@
 #include <QJsonDocument>
 #include <QHBoxLayout>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPointer>
+
+// =========================================================================
+// Qt 绘图：将任意方形 QPixmap 切割为带抗锯齿的高清圆形头像
+// =========================================================================
+static QPixmap makeCircularAvatar(const QPixmap &src, int size)
+{
+    if (src.isNull()) return QPixmap();
+    QPixmap scaled = src.scaled(size, size, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    QPixmap result(size, size);
+    result.fill(Qt::transparent);
+    QPainter painter(&result);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    QPainterPath path;
+    path.addEllipse(0, 0, size, size);
+    painter.setClipPath(path);
+    painter.drawPixmap(0, 0, size, size, scaled);
+    return result;
+}
 
 NewFriendWidget::NewFriendWidget(QWidget *parent) : QWidget(parent)
 {
@@ -57,23 +79,51 @@ void NewFriendWidget::loadPendingRequests()
 
             for (int i = 0; i < data.size(); ++i) {
                 QJsonObject reqObj = data[i].toObject();
-                // 🌟 注意：这里取的是 VO 里的 requestId！
                 QString requestId = reqObj["requestId"].toVariant().toString();
                 QString nickname = reqObj["nickname"].toString();
                 QString reason = reqObj["reason"].toString();
 
+                // 🌟 1. 提取后端返回的头像 URL (需要后端接口支持返回该字段)
+                QString avatarUrl = reqObj["avatar"].toString();
+
                 QListWidgetItem* item = new QListWidgetItem(m_requestList);
-                item->setSizeHint(QSize(0, 80)); // 调高一点，容纳两行文字
+                item->setSizeHint(QSize(0, 80));
 
                 QWidget* customWidget = new QWidget(m_requestList);
                 QHBoxLayout* itemLayout = new QHBoxLayout(customWidget);
                 itemLayout->setContentsMargins(15, 10, 15, 10);
 
-                // 头像
-                QLabel* avatarLabel = new QLabel(nickname.left(1), customWidget);
+                // 🌟 2. 初始化头像标签 (尺寸设为 50x50)
+                QLabel* avatarLabel = new QLabel(customWidget);
                 avatarLabel->setFixedSize(50, 50);
                 avatarLabel->setAlignment(Qt::AlignCenter);
-                avatarLabel->setStyleSheet("background-color: #07C160; color: white; border-radius: 25px; font-size: 18px; font-weight: bold;");
+
+                // 🌟 3. 使用 QPointer 智能弱指针保护 UI
+                QPointer<QLabel> safeLabel(avatarLabel);
+
+                if (!avatarUrl.isEmpty()) {
+                    // 灰底加载占位符
+                    avatarLabel->setStyleSheet("background-color: #E0E0E0; border-radius: 25px;");
+                    QString safeUrl = avatarUrl;
+                    safeUrl.replace("localhost", "127.0.0.1"); // 避开 IPv6 陷阱
+
+                    // 异步拉取
+                    HttpManager::instance()->downloadImage(safeUrl, [safeLabel, nickname](QPixmap originalImage) {
+                        if (safeLabel) { // 确认控件没被销毁
+                            safeLabel->setPixmap(makeCircularAvatar(originalImage, 50));
+                            safeLabel->setStyleSheet(""); // 清空背景色
+                        }
+                    }, [safeLabel, nickname](QString err) {
+                                                               if (safeLabel) { // 网络失败兜底：显示首字母
+                                                                   safeLabel->setText(nickname.left(1));
+                                                                   safeLabel->setStyleSheet("background-color: #07C160; color: white; border-radius: 25px; font-size: 18px; font-weight: bold;");
+                                                               }
+                                                           });
+                } else {
+                    // 没有 URL 兜底：显示首字母
+                    avatarLabel->setText(nickname.left(1));
+                    avatarLabel->setStyleSheet("background-color: #07C160; color: white; border-radius: 25px; font-size: 18px; font-weight: bold;");
+                }
 
                 // 名字与申请理由容器 (垂直排列)
                 QVBoxLayout* infoLayout = new QVBoxLayout();

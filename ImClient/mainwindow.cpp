@@ -9,6 +9,39 @@
 #include <QFileDialog>
 #include <QFile>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPainterPath>
+
+// QT绘图
+static QPixmap makeCircularAvatar(const QPixmap &src, int size)
+{
+    if (src.isNull()) {
+        return QPixmap();
+    }
+
+    // 1. 将原图按比例缩放并裁剪，确保图片铺满我们指定的 size，不留黑边
+    QPixmap scaled = src.scaled(size, size, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+
+    // 2. 创建一张完全透明的画布
+    QPixmap result(size, size);
+    result.fill(Qt::transparent);
+
+    // 3. 请出 QPainter 在透明画布上作画
+    QPainter painter(&result);
+    // 极其关键：开启抗锯齿，否则圆的边缘全是马赛克一样的狗牙
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+
+    // 4. 勾勒一个完美的圆形路径
+    QPainterPath path;
+    path.addEllipse(0, 0, size, size);
+    painter.setClipPath(path); // 所有的绘制只在这个圆形范围内生效
+
+    // 5. 决定性的一笔：把刚才缩放好的图，“贴”到这个圆形的裁剪框里
+    painter.drawPixmap(0, 0, size, size, scaled);
+
+    return result;
+}
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -92,12 +125,15 @@ void MainWindow::fetchFriendList() {
         int code = res["code"].toInt();
         if (code == 200) {
             QJsonArray data = res["data"].toArray();
-            m_friendList->clear(); // 清空旧列表项
+
+            m_friendList->clear();
+            // 🌟 核心修复 1：必须清空旧的字典缓存！防止内存泄漏和幽灵数据
+            m_friendMap.clear();
 
             // 暴力置顶 “新朋友” 项
             QListWidgetItem* newFriendItem = new QListWidgetItem("⭐ 新朋友", m_friendList);
-            newFriendItem->setData(Qt::UserRole, "SYSTEM_NEW_FRIEND"); // 极其特殊的魔法 ID
-            newFriendItem->setForeground(QBrush(QColor(255, 140, 0))); // 醒目的橘黄色
+            newFriendItem->setData(Qt::UserRole, "SYSTEM_NEW_FRIEND");
+            newFriendItem->setForeground(QBrush(QColor(255, 140, 0)));
             QFont f = newFriendItem->font();
             f.setBold(true);
             newFriendItem->setFont(f);
@@ -108,9 +144,6 @@ void MainWindow::fetchFriendList() {
                 QString nickname = item["nickname"].toString();
                 QString friendId = item["id"].toVariant().toString();
 
-                qDebug() << "🔍 解析好友数据:" << item;
-
-                // 不管后端传的是 true/false 还是 1/0，甚至字符串 "true"，都能正确转换！
                 bool isOnline = item["isOnline"].toVariant().toBool();
 
                 QString displayText = nickname;
@@ -126,17 +159,32 @@ void MainWindow::fetchFriendList() {
 
                 // 初始颜色渲染
                 if (isOnline) {
-                    listItem->setForeground(QBrush(QColor(46, 139, 87))); // 森林绿
+                    listItem->setForeground(QBrush(QColor(46, 139, 87)));
                     QFont font = listItem->font();
                     font.setBold(true);
                     listItem->setFont(font);
                 } else {
-                    listItem->setForeground(QBrush(Qt::gray)); // 离线灰
+                    listItem->setForeground(QBrush(Qt::gray));
                 }
 
-                // 更新全局好友映射表
+                // 重新构建健康的全局好友映射表
                 m_friendMap.insert(friendId, nickname);
             }
+
+            // ==========================================================
+            // 🌟 核心修复 2：上帝视角的防呆校验 (绝杀)
+            // 如果我们当前正在聊天，就去检查这个人还是不是我们的好友
+            // ==========================================================
+            if (!m_currentChatFriendId.isEmpty() && m_currentChatFriendId != "SYSTEM_NEW_FRIEND") {
+                // 如果最新的好友列表里没有这个人的 ID 了
+                if (!m_friendMap.contains(m_currentChatFriendId)) {
+                    qDebug() << "⚠️ 警告：当前聊天对象已非好友，强制清空右侧聊天视图！";
+                    // 🌟 核心修复 3：强制切换到空白页，并清空当前聊天 ID
+                    m_rightStack->setCurrentWidget(m_emptyPage);
+                    m_currentChatFriendId = "";
+                }
+            }
+
         }
     }, [=](QString err) {
                                      qDebug() << "获取好友列表失败: " << err;
@@ -375,6 +423,12 @@ void MainWindow::onFriendItemClicked(QListWidgetItem *item)
 {
     QString friendId = item->data(Qt::UserRole).toString();
 
+    // ==========================================================
+    // 🌟 核心遗漏点修复：必须在这里把点中的好友 ID 记录到系统状态里！
+    // 这样删除逻辑才知道你现在到底在看着谁的聊天框！
+    // ==========================================================
+    m_currentChatFriendId = friendId;
+
     // 如果是新朋友，切换到管理面版
     if (friendId == "SYSTEM_NEW_FRIEND") {
         m_rightStack->setCurrentWidget(m_newFriendWidget);
@@ -414,28 +468,63 @@ void MainWindow::initGlobalLayout()
 void MainWindow::initLeftNavbar()
 {
     m_leftNavbar = new QFrame(this);
-    m_leftNavbar->setFixedWidth(60);
-    m_leftNavbar->setObjectName("leftNavbar"); // 用于 QSS 样式表定位
+    m_leftNavbar->setFixedWidth(75);
+    m_leftNavbar->setObjectName("leftNavbar");
 
     m_navLayout = new QVBoxLayout(m_leftNavbar);
-    m_navLayout->setContentsMargins(5, 20, 5, 20);
-    m_navLayout->setSpacing(20);
+    m_navLayout->setContentsMargins(5, 30, 5, 20);
+    m_navLayout->setSpacing(15);
 
-    // 导航栏初始化
-    m_btnAvatar = new QPushButton("我", m_leftNavbar);
-    m_btnAvatar->setFixedSize(40, 40);
+    // 头像
+    m_btnAvatar = new QPushButton(this);
+    m_btnAvatar->setFixedSize(45, 45);
     m_btnAvatar->setObjectName("btnAvatar");
 
+    // 昵称标签
+    m_lblNickname = new QLabel(HttpManager::instance()->getMyNickname(), this);
+    m_lblNickname->setAlignment(Qt::AlignCenter);
+    m_lblNickname->setObjectName("lblMyNickname");
+
+    // 导航按钮
     m_btnChat = new QPushButton("消息", m_leftNavbar);
-    m_btnChat->setFixedSize(40, 40);
+    m_btnChat->setFixedSize(55, 35);
+    m_btnChat->setCheckable(true); // 开启锁定状态支持
 
     m_btnContact = new QPushButton("联系人", m_leftNavbar);
-    m_btnContact->setFixedSize(40, 40);
+    m_btnContact->setFixedSize(55, 35);
+    m_btnContact->setCheckable(true); // 开启锁定状态支持
 
-    m_navLayout->addWidget(m_btnAvatar);
-    m_navLayout->addWidget(m_btnChat);
-    m_navLayout->addWidget(m_btnContact);
-    m_navLayout->addStretch(); // 底部弹簧置顶按钮
+    // 按钮互斥组：保证一次只能锁定一个按钮
+    m_navButtonGroup = new QButtonGroup(this);
+    m_navButtonGroup->addButton(m_btnChat, 0);
+    m_navButtonGroup->addButton(m_btnContact, 1);
+
+    // 核心联动：点击左侧按钮，切换中间栏的堆栈页面
+    connect(m_navButtonGroup, QOverload<int>::of(&QButtonGroup::idClicked), this, [=](int id){
+        m_middleStack->setCurrentIndex(id);
+    });
+
+    m_navLayout->addWidget(m_btnAvatar, 0, Qt::AlignHCenter);
+    m_navLayout->addWidget(m_lblNickname, 0, Qt::AlignHCenter);
+    m_navLayout->addSpacing(20);
+    m_navLayout->addWidget(m_btnChat, 0, Qt::AlignHCenter);
+    m_navLayout->addWidget(m_btnContact, 0, Qt::AlignHCenter);
+    m_navLayout->addStretch();
+
+    // 默认锁定“消息”频道
+    m_btnChat->setChecked(true);
+
+    // 动态头像拉取
+    QString myAvatarUrl = HttpManager::instance()->getMyAvatarUrl();
+    myAvatarUrl.replace("localhost", "127.0.0.1");
+    HttpManager::instance()->downloadImage(myAvatarUrl, [=](QPixmap originalImage) {
+        QPixmap circularAvatar = makeCircularAvatar(originalImage, 45);
+        m_btnAvatar->setText("");
+        m_btnAvatar->setIcon(QIcon(circularAvatar));
+        m_btnAvatar->setIconSize(QSize(45, 45));
+    }, [=](QString err) {
+                                               m_btnAvatar->setText("我");
+                                           });
 
     m_mainLayout->addWidget(m_leftNavbar);
 }
@@ -450,11 +539,10 @@ void MainWindow::initMiddleSidebar()
     m_sidebarLayout->setContentsMargins(0, 0, 0, 0);
     m_sidebarLayout->setSpacing(0);
 
-    // 搜索与添加功能区
+    // 搜索区 (保持不变)
     m_searchHeader = new QWidget(m_middleSidebar);
     m_searchHeader->setFixedHeight(60);
     m_searchHeader->setObjectName("searchHeader");
-
     QHBoxLayout* searchLayout = new QHBoxLayout(m_searchHeader);
     searchLayout->setContentsMargins(10, 15, 10, 15);
     searchLayout->setSpacing(10);
@@ -467,26 +555,43 @@ void MainWindow::initMiddleSidebar()
     QPushButton* btnAddFriend = new QPushButton("+", m_searchHeader);
     btnAddFriend->setFixedSize(30, 30);
     btnAddFriend->setObjectName("btnAddFriendTop");
-
-    // 绑定点击事件，呼出独立弹窗
     connect(btnAddFriend, &QPushButton::clicked, this, [=]() {
         AddFriendDialog dialog(this);
-        dialog.exec(); // exec() 表示模态阻塞弹出，关掉弹窗前无法点击主界面
+        dialog.exec();
     });
 
     searchLayout->addWidget(searchEdit);
     searchLayout->addWidget(btnAddFriend);
 
+    // 中间栏的堆栈容器
+    m_middleStack = new QStackedWidget(m_middleSidebar);
+
+    // 页面 0：消息会话列表 (目前用一个空白提示占位，后续可开发)
+    m_sessionList = new QListWidget(m_middleSidebar);
+    m_sessionList->setFrameShape(QFrame::NoFrame);
+    QListWidgetItem* emptyItem = new QListWidgetItem("暂无新消息", m_sessionList);
+    emptyItem->setTextAlignment(Qt::AlignCenter);
+    emptyItem->setForeground(QBrush(Qt::gray));
+    m_sessionList->addItem(emptyItem);
+
+    // 页面 1：联系人好友列表
     m_friendList = new QListWidget(m_middleSidebar);
     m_friendList->setFrameShape(QFrame::NoFrame);
+    // 开启自定义右键菜单策略
+    m_friendList->setContextMenuPolicy(Qt::CustomContextMenu);
+
+    connect(m_friendList, &QListWidget::itemClicked, this, &MainWindow::onFriendItemClicked);
+    // 监听右键点击事件，呼出菜单
+    connect(m_friendList, &QListWidget::customContextMenuRequested, this, &MainWindow::showFriendListContextMenu);
+
+    // 将两个列表塞入堆栈
+    m_middleStack->addWidget(m_sessionList); // Index 0 (对应消息按钮)
+    m_middleStack->addWidget(m_friendList);  // Index 1 (对应联系人按钮)
 
     m_sidebarLayout->addWidget(m_searchHeader);
-    m_sidebarLayout->addWidget(m_friendList);
+    m_sidebarLayout->addWidget(m_middleStack); // 塞入的是 Stack 而不是单一列表了
 
     m_mainLayout->addWidget(m_middleSidebar);
-
-    // 在 initMiddleSidebar 中添加
-    connect(m_friendList, &QListWidget::itemClicked, this, &MainWindow::onFriendItemClicked);
 }
 
 void MainWindow::initRightContainer()
@@ -521,6 +626,85 @@ void MainWindow::initRightContainer()
 
     m_mainLayout->addWidget(m_rightStack, 1);
 }
+
+// =========================================================================
+// 🌟 右键菜单拦截与渲染
+// =========================================================================
+void MainWindow::showFriendListContextMenu(const QPoint &pos)
+{
+    // 1. 获取当前鼠标点中的是哪个列表项
+    QListWidgetItem *item = m_friendList->itemAt(pos);
+    if (!item) return; // 点在空白处不响应
+
+    // 2. 提取绑定的雪花 ID
+    QString friendId = item->data(Qt::UserRole).toString();
+
+    // 防御：如果是顶部的“新朋友”系统按钮，绝对不允许删除
+    if (friendId == "SYSTEM_NEW_FRIEND") return;
+
+    // 3. 构建现代风格的右键菜单
+    QMenu menu(this);
+    menu.setStyleSheet(
+        "QMenu { background-color: #FFFFFF; border: 1px solid #CCCCCC; border-radius: 4px; padding: 5px; }"
+        "QMenu::item { padding: 8px 25px; font-size: 14px; color: #333333; }"
+        "QMenu::item:selected { background-color: #F0F0F0; color: #E64340; font-weight: bold; border-radius: 4px; }" // 悬停时变红警告
+        );
+
+    QAction *deleteAction = menu.addAction("删除该好友");
+
+    // 4. 阻塞式弹出菜单，并捕获用户的选择
+    QAction *selectedAction = menu.exec(m_friendList->mapToGlobal(pos));
+
+    if (selectedAction == deleteAction) {
+        // 剥离掉 "[在线]" 等状态文本，还原真实昵称
+        QString cleanNickname = item->text().split(" [").first();
+        handleDeleteFriend(friendId, cleanNickname);
+    }
+}
+
+// =========================================================================
+// 🌟 终极删除大杀器
+// =========================================================================
+void MainWindow::handleDeleteFriend(const QString& friendId, const QString& nickname)
+{
+    // 1. 二次确认防手抖防线（这是涉及删除操作的客户端金科玉律）
+    int ret = QMessageBox::warning(this, "严重警告",
+                                   QString("确定要将好友【%1】删除吗？\n此操作将清空你们所有的聊天记录且不可恢复！").arg(nickname),
+                                   QMessageBox::Yes | QMessageBox::No,
+                                   QMessageBox::No); // 默认焦点放在 No 上
+
+    if (ret != QMessageBox::Yes) {
+        return; // 用户怂了，终止操作
+    }
+
+    // 2. 发起夺命网络请求 (⚠️ 依然使用 127.0.0.1 避开 Qt IPv6 解析挂起陷阱)
+    QString url = QString("http://127.0.0.1:9000/im-server/friend/delete?friendId=%1").arg(friendId);
+
+    HttpManager::instance()->postJson(url, QJsonObject(), [=](QJsonObject res) {
+        if (res["code"].toInt() == 200) {
+            QMessageBox::information(this, "执行成功", "已彻底切断与该用户的羁绊。");
+
+            // 🌟 战后重建 1：静默刷新左侧列表，让这人瞬间消失
+            fetchFriendList();
+
+            // 🌟 战后重建 2：如果此时你恰好停留在和这个人的聊天界面，立刻切回空白页！
+            // 防止你还在对着一个不存在的人发消息导致底层系统崩溃
+            if (m_currentChatFriendId == friendId) {
+                m_rightStack->setCurrentWidget(m_emptyPage);
+                m_currentChatFriendId = "";
+            }
+
+            // 🌟 战后重建 3：清理本地字典缓存
+            m_friendMap.remove(friendId);
+
+        } else {
+            QMessageBox::warning(this, "删除失败", res["message"].toString());
+        }
+    }, [=](QString err) {
+                                          QMessageBox::critical(this, "网络崩溃", "请求失败，请检查网络：" + err);
+                                      });
+}
+
 
 // QSS 规则集
 void MainWindow::initStyleSheet()
@@ -560,19 +744,30 @@ void MainWindow::initStyleSheet()
             border: none;
             border-radius: 4px; /* 轻微圆角 */
         }
-
+        /* 头像占位符美化 */
+        #leftNavbar #btnAvatar {
+        background-color: #07C160; /* 微信绿 */
+        color: #FFFFFF;
+        border-radius: 20px; /* 变成正圆形 */
+        font-weight: bold;
+        }
         /* 导航栏按钮的悬停交互 (Hover) */
         #leftNavbar QPushButton:hover {
             background-color: #3D3D3D;
         }
+        #lblMyNickname {
+            color: #AAAAAA;
+            font-size: 12px;
+        }
 
-        /* 头像占位符美化 */
-        #leftNavbar #btnAvatar {
-            background-color: #07C160; /* 微信绿 */
-            color: #FFFFFF;
-            border-radius: 20px; /* 变成正圆形 */
+        /* 核心：左侧导航按钮被“锁定”时的激活状态 */
+        #leftNavbar QPushButton:checked {
+            background-color: #3D3D3D;
+            color: #07C160; /* 微信绿高亮 */
+            border-radius: 4px;
             font-weight: bold;
         }
+
 
         /* =========================================
            3. 中间侧边栏 (Middle Sidebar)
@@ -694,3 +889,4 @@ void MainWindow::initStyleSheet()
     // 将组装好的样式表应用到当前主窗口
     this->setStyleSheet(qss);
 }
+

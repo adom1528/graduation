@@ -6,6 +6,7 @@
 #include <QHttpMultiPart>
 #include <QHttpPart>
 #include <QFileInfo>
+#include <QPixmap>
 
 HttpManager* HttpManager::instance()
 {
@@ -216,3 +217,32 @@ void HttpManager::getBytes(const QString& url,
         }
     });
 }
+
+void HttpManager::downloadImage(const QString& url,
+                                std::function<void (QPixmap)> onSuccess,
+                                std::function<void (QString)> onError)
+{
+    // 复用你写好的极其稳定的 getBytes 方法
+    getBytes(url, [=](QByteArray data) {
+
+        // 把服务器返回的真实内容强行打印出来！
+        // qDebug() << "======================================";
+        // qDebug() << "服务器返回的原始数据前 200 字节:";
+        // qDebug() << data.left(200);
+        // qDebug() << "======================================";
+
+        QPixmap pixmap;
+        // 尝试从内存中的二进制流解析为图片对象
+        if (pixmap.loadFromData(data)) {
+            onSuccess(pixmap);
+        } else {
+            onError("数据拉取成功，但无法解析为图片格式");
+        }
+    }, onError);
+}
+
+void HttpManager::setMyAvatarUrl(const QString& url) { m_myAvatarUrl = url; }
+QString HttpManager::getMyAvatarUrl() const { return m_myAvatarUrl; }
+
+void HttpManager::setMyNickname(const QString& nickname) { m_myNickname = nickname; }
+QString HttpManager::getMyNickname() const { return m_myNickname; }

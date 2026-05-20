@@ -13,7 +13,9 @@
 #include <QFrame>
 #include <QTimer>
 #include <QWebsocket>
-
+#include <QLabel>
+#include <QButtonGroup>
+#include <QMenu>
 
 /**
  * @brief 核心主窗口类
@@ -114,6 +116,16 @@ private slots:
     */
     void onTextMessageReceived(QString message);
 
+    /**
+     * @brief
+     */
+    void showFriendListContextMenu(const QPoint &pos);
+
+    /**
+     * @brief
+     */
+    void handleDeleteFriend(const QString& friendId, const QString& nickname);
+
 private:
     // 全局中心组件与主布局
     QWidget* m_centralWidget;
@@ -125,6 +137,9 @@ private:
     QPushButton* m_btnAvatar;
     QPushButton* m_btnChat;
     QPushButton* m_btnContact;
+    QLabel* m_lblNickname;           // 侧边栏的昵称标签
+    QButtonGroup* m_navButtonGroup;  // 侧边栏按钮互斥组（实现锁定效果）
+
 
     // 第二段：中间侧边栏（包含搜索与列表）
     QFrame* m_middleSidebar;
@@ -132,6 +147,8 @@ private:
     QWidget* m_searchHeader;
     NewFriendWidget* m_newFriendWidget;
     QListWidget* m_friendList;
+    QStackedWidget* m_middleStack;   // 中间栏的堆栈容器
+    QListWidget* m_sessionList;      // 消息会话列表（点击消息按钮时显示）
 
     // 第三段：右侧堆栈式工作区
     QStackedWidget* m_rightStack;
@@ -143,6 +160,8 @@ private:
     QTimer* m_heartbeatTimer;
     QString m_myToken;
     QMap<QString, QString> m_friendMap; // 用于 ID 到昵称的映射
+    // 记录当前正在右侧面板聊天的朋友 ID（用于删除防呆保护）
+    QString m_currentChatFriendId;
 
 };
 

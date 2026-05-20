@@ -19,6 +19,14 @@ public:
     void setToken(const QString& token);
     QString getToken() const;
 
+    // 头像url
+    void setMyAvatarUrl(const QString& url);
+    QString getMyAvatarUrl() const;
+
+    // 昵称
+    void setMyNickname(const QString& nickname);
+    QString getMyNickname() const;
+
     // 极其优雅的 POST JSON 封装
     void postJson(const QString& url, const QJsonObject& data,
                   std::function<void(QJsonObject)> onSuccess,
@@ -68,12 +76,24 @@ public:
                   std::function<void(QByteArray)> onSuccess,
                   std::function<void(QString)> onError);
 
+    /**
+     * @brief downloadImage 极简图片下载利器 (自动转换为 QPixmap)
+     * @param url 图片的 MinIO 或网络地址
+     * @param onSuccess 成功时直接返回可以用于 UI 渲染的 QPixmap
+     * @param onError 失败回调
+     */
+    void downloadImage(const QString& url,
+                       std::function<void(QPixmap)> onSuccess,
+                       std::function<void(QString)> onError);
+
 private:
     explicit HttpManager(QObject *parent = nullptr);
     ~HttpManager();
 
     QNetworkAccessManager *m_manager;
     QString m_token;
+    QString m_myAvatarUrl;
+    QString m_myNickname;
 };
 
 #endif // HTTPMANAGER_H

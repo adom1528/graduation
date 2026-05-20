@@ -6,6 +6,28 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QInputDialog>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPointer>
+
+// =========================================================================
+//  Qt 绘图：将任意方形 QPixmap 切割为带抗锯齿的高清圆形头像
+// =========================================================================
+static QPixmap makeCircularAvatar(const QPixmap &src, int size)
+{
+    if (src.isNull()) return QPixmap();
+    QPixmap scaled = src.scaled(size, size, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    QPixmap result(size, size);
+    result.fill(Qt::transparent);
+    QPainter painter(&result);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    QPainterPath path;
+    path.addEllipse(0, 0, size, size);
+    painter.setClipPath(path);
+    painter.drawPixmap(0, 0, size, size, scaled);
+    return result;
+}
 
 AddFriendDialog::AddFriendDialog(QWidget *parent) : QDialog(parent)
 {
@@ -91,12 +113,15 @@ void AddFriendDialog::performSearch()
             }
 
             // 遍历渲染搜到的用户
+            // 遍历渲染搜到的用户
             for (int i = 0; i < data.size(); ++i) {
                 QJsonObject userObj = data[i].toObject();
                 QString userId = userObj["id"].toVariant().toString();
                 QString nickname = userObj["nickname"].toString();
 
-                // 🌟 核心魔法：使用 QWidget 打造高度定制化的列表项
+                // 尝试从后端提取头像 URL
+                QString avatarUrl = userObj["avatar"].toString();
+
                 QListWidgetItem* item = new QListWidgetItem(m_resultList);
                 item->setSizeHint(QSize(0, 60)); // 设置行高
 
@@ -104,11 +129,41 @@ void AddFriendDialog::performSearch()
                 QHBoxLayout* itemLayout = new QHBoxLayout(customWidget);
                 itemLayout->setContentsMargins(10, 0, 10, 0);
 
-                // 虚拟头像 (取名字第一个字)
-                QLabel* avatarLabel = new QLabel(nickname.left(1), customWidget);
+                //  初始化的头像标签
+                QLabel* avatarLabel = new QLabel(customWidget);
                 avatarLabel->setFixedSize(40, 40);
                 avatarLabel->setAlignment(Qt::AlignCenter);
-                avatarLabel->setStyleSheet("background-color: #0052D9; color: white; border-radius: 20px; font-weight: bold; font-size: 16px;");
+
+                //  使用 QPointer 保护我们的 UI 控件！
+                // 如果用户频繁搜索导致这个 Label 被提前销毁，QPointer 会自动变成 null，防止程序崩溃
+                QPointer<QLabel> safeLabel(avatarLabel);
+
+                if (!avatarUrl.isEmpty()) {
+                    // 如果有头像，先给一个低调的灰色加载背景
+                    avatarLabel->setStyleSheet("background-color: #E0E0E0; border-radius: 20px;");
+
+                    QString safeUrl = avatarUrl;
+                    safeUrl.replace("localhost", "127.0.0.1"); // 避开 IPv6 陷阱
+
+                    // 发起异步拉取
+                    HttpManager::instance()->downloadImage(safeUrl, [safeLabel, nickname](QPixmap originalImage) {
+                        // 🛡️ 极其关键的安全判断：只有当界面还在时，才去渲染
+                        if (safeLabel) {
+                            safeLabel->setPixmap(makeCircularAvatar(originalImage, 40));
+                            safeLabel->setStyleSheet(""); // 清空背景色
+                        }
+                    }, [safeLabel, nickname](QString err) {
+                                                               // 失败兜底：显示名字首字母
+                                                               if (safeLabel) {
+                                                                   safeLabel->setText(nickname.left(1));
+                                                                   safeLabel->setStyleSheet("background-color: #0052D9; color: white; border-radius: 20px; font-weight: bold; font-size: 16px;");
+                                                               }
+                                                           });
+                } else {
+                    // 如果后端连 URL 都没传，直接走兜底逻辑
+                    avatarLabel->setText(nickname.left(1));
+                    avatarLabel->setStyleSheet("background-color: #0052D9; color: white; border-radius: 20px; font-weight: bold; font-size: 16px;");
+                }
 
                 // 名字标签
                 QLabel* nameLabel = new QLabel(nickname, customWidget);
