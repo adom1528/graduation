@@ -1,11 +1,10 @@
 package com.graduation.im.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.graduation.im.entity.ChatUser;
-import com.graduation.im.entity.FriendRequest;
-import com.graduation.im.entity.FriendRequestVO;
-import com.graduation.im.entity.FriendVO;
+import com.graduation.im.entity.*;
+import com.graduation.im.mapper.ChatMessageMapper;
 import com.graduation.im.mapper.FriendMapper;
 import com.graduation.im.mapper.FriendRequestMapper;
 import com.graduation.im.mapper.UserMapper;
@@ -22,11 +21,14 @@ import java.util.List;
 @Service
 public class FriendServiceImpl extends ServiceImpl<FriendMapper, FriendVO> implements FriendService {
 
-    @Resource // 或者 @Autowired
+    @Resource
     private FriendMapper friendMapper;
 
     @Resource
     private FriendRequestMapper friendRequestMapper;
+
+    @Autowired
+    private ChatMessageMapper chatMessageMapper;
 
     @Resource
     private NettyService nettyService;
@@ -161,5 +163,44 @@ public class FriendServiceImpl extends ServiceImpl<FriendMapper, FriendVO> imple
     public List<FriendRequestVO> getPendingRequests(Long currentUserId) {
         // 没有任何多余的废话，直接让 MyBatis 去做最高效的联表抓取
         return friendRequestMapper.getPendingRequests(currentUserId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class) // 🌟 核心：开启强事务防线，遇异常全盘回滚
+    public void deleteFriendCascade(Long currentUserId, Long friendId) {
+
+        // ⚔️ 第一刀：清洗【好友关系表】(im_friend)
+        // 条件：(user_id = 我 AND friend_id = 对方) OR (user_id = 对方 AND friend_id = 我)
+        UpdateWrapper<FriendVO> friendWrapper = new UpdateWrapper<>();
+        friendWrapper.and(w -> w.eq("user_id", currentUserId).eq("friend_id", friendId))
+                .or(w -> w.eq("user_id", friendId).eq("friend_id", currentUserId));
+        friendMapper.delete(friendWrapper);
+
+
+        // ⚔️ 第二刀：清洗【好友申请表】(im_friend_request)
+        // 条件：(sender_id = 我 AND receiver_id = 对方) OR (sender_id = 对方 AND receiver_id = 我)
+        // 作用：防止解除关系后，历史的申请记录还在，导致产生逻辑 Bug
+        UpdateWrapper<FriendRequest> requestWrapper = new UpdateWrapper<>();
+        requestWrapper.and(w -> w.eq("from_user_id", currentUserId).eq("to_user_id", friendId))
+                .or(w -> w.eq("from_user_id", friendId).eq("to_user_id", currentUserId));
+        friendRequestMapper.delete(requestWrapper);
+
+
+        // ⚔️ 第三刀：清洗【聊天记录表】(im_chat_message)
+        // 条件：(from_user_id = 我 AND to_user_id = 对方) OR (from_user_id = 对方 AND to_user_id = 我)
+        UpdateWrapper<ChatMessage> messageWrapper = new UpdateWrapper<>();
+        messageWrapper.and(w -> w.eq("from_user_id", currentUserId).eq("to_user_id", friendId))
+                .or(w -> w.eq("from_user_id", friendId).eq("to_user_id", currentUserId));
+        chatMessageMapper.delete(messageWrapper);
+
+
+        // 异步通知被删除的受害者（对方如果在线，列表同步刷新）
+        try {
+            // 这里可以调用你 Netty 服务的群发/单发接口，或者往消息队列(RabbitMQ/RocketMQ)抛一个推流通知
+            nettyService.sendFriendDeleteNotification(friendId);
+        } catch (Exception e) {
+            // 分布式通知允许弱一致性，不要因为网络抖动影响核心数据库事务的提交
+            log.error("WebSocket 实时同步通知失败，对方将在下次登录时刷新列表", e);
+        }
     }
 }

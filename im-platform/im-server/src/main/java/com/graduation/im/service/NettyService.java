@@ -68,4 +68,31 @@ public class NettyService {
             }
         }
     }
+
+    /**
+     * 发送“被删除好友”的强制刷新通知 (Type 6)
+     * @param targetUserId 被删除的那个人的 ID
+     */
+    public void sendFriendDeleteNotification(Long targetUserId) {
+        Channel channel = UserChannelCtxMap.getChannel(targetUserId);
+
+        if (channel != null && channel.isActive()) {
+            try {
+                // 组装 Type = 6 的系统指令
+                Map<String, Object> msg = new HashMap<>();
+                msg.put("type", 6);
+                msg.put("content", "您已被对方解除好友关系，请刷新列表");
+
+                String jsonOutput = objectMapper.writeValueAsString(msg);
+
+                // 顺着网线砸过去！
+                channel.writeAndFlush(new TextWebSocketFrame(jsonOutput));
+                log.info("🎯 已向被删用户 {} 推送强制刷新指令 (Type 6)", targetUserId);
+            } catch (Exception e) {
+                log.error("推送删除刷新指令失败", e);
+            }
+        } else {
+            log.info("被删用户 {} 不在线，下次登录会自动刷新", targetUserId);
+        }
+    }
 }

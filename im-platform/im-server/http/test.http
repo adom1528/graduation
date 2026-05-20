@@ -22,7 +22,7 @@ GET {{host}}/im-server/chat/history?friendId=2039190026355220482
 Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjIwMzkxOTAwNDc4NzYxOTQzMDYsInVzZXJuYW1lIjoibHMiLCJzdWIiOiJscyIsImlhdCI6MTc3Njk1NDQ2MSwiZXhwIjoxNzc3MDQwODYxfQ.NLous7uIq16ISUEmGJbCiyi4CmrCIHq1xePGhr7hAzw
 
 ### 测试搜索用户(nickname)
-GET {{host}}/im-server/user/search?nickname=ls
+GET {{host}}/im-server/user/search?nickname=zs
 
 ### 测试发出好友请求(自己加自己)
 POST {{host}}/im-server/friend/request

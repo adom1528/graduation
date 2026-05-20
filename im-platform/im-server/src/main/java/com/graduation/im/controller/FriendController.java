@@ -120,4 +120,24 @@ public class FriendController {
 
         return Result.success(pendingList);
     }
+
+    @PostMapping("/delete")
+    public Result<String> deleteFriend(@RequestParam("friendId") Long friendId, HttpServletRequest request) {
+        try {
+            // 🔒 安全护航：从请求头的 Authorization 中强行解析出当前用户真实的雪花 ID
+            String token = request.getHeader("Authorization");
+            Long currentUserId = jwtUtils.getUserIdFromHeaderToken(token);
+
+            if (currentUserId == null) {
+                return Result.error("未登录或 Token 已过期");
+            }
+
+            // 调用强事务级联清洗服务
+            friendService.deleteFriendCascade(currentUserId, friendId);
+
+            return Result.success("好友删除成功");
+        } catch (Exception e) {
+            return Result.error("删除失败：" + e.getMessage());
+        }
+    }
 }

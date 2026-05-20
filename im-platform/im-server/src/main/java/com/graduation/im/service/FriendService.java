@@ -16,4 +16,10 @@ public interface FriendService {
     void rejectFriendRequest(Long currentUserId, Long requestId);
 
     List<FriendRequestVO> getPendingRequests(Long currentUserId);
+    /**
+     * 强事务级联删除好友
+     * @param currentUserId 当前操作用户ID（从Token解析）
+     * @param friendId      要删除的好友雪花ID
+     */
+    void deleteFriendCascade(Long currentUserId, Long friendId);
 }

@@ -23,3 +23,10 @@ spring:
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# MinIO 配置
+minio:
+  endpoint: http://localhost:19000  # API 端口，控制台端口为 19001
+  access-key: admin
+  secret-key: admin12345
+  bucket-name: im-chat

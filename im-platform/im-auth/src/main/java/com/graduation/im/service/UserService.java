@@ -1,11 +1,14 @@
 package com.graduation.im.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.graduation.im.dto.res.LoginVO;
 import com.graduation.im.entity.User;
+import com.graduation.im.dto.req.RegisterRequest;
 
 public interface UserService extends IService<User> {
-    // 定义一个注册方法
-    void register(String username, String nickname, String password);
-    // 返回值是 String，因为要返回 Token
-    String login(String username, String password);
+    // 参数直接替换为 RegisterRequest
+    void register(RegisterRequest request);
+
+    // 返回值从 String 变更为 LoginVO
+    LoginVO login(String username, String password);
 }
