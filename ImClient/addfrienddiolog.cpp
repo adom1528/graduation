@@ -92,7 +92,7 @@ void AddFriendDialog::performSearch()
     m_resultList->clear(); // 清空旧数据
 
     // 组装搜索请求
-    QString url = "http://localhost:9000/im-server/user/search";
+    QString url = "http://10.196.229.92:9000/im-server/user/search";
     QVariantMap params;
     params["nickname"] = keyword;
 
@@ -112,7 +112,6 @@ void AddFriendDialog::performSearch()
                 return;
             }
 
-            // 遍历渲染搜到的用户
             // 遍历渲染搜到的用户
             for (int i = 0; i < data.size(); ++i) {
                 QJsonObject userObj = data[i].toObject();
@@ -143,7 +142,7 @@ void AddFriendDialog::performSearch()
                     avatarLabel->setStyleSheet("background-color: #E0E0E0; border-radius: 20px;");
 
                     QString safeUrl = avatarUrl;
-                    safeUrl.replace("localhost", "127.0.0.1"); // 避开 IPv6 陷阱
+                    safeUrl.replace("localhost", "10.196.229.92");
 
                     // 发起异步拉取
                     HttpManager::instance()->downloadImage(safeUrl, [safeLabel, nickname](QPixmap originalImage) {
@@ -207,7 +206,7 @@ void AddFriendDialog::sendFriendRequest(const QString& targetId)
 
     // 我们巧妙地利用 HttpManager::postJson 发送请求
     // 因为 SpringBoot 的 @RequestParam 支持从 URL 提取 POST 参数，我们直接拼在 URL 后面
-    QString url = QString("http://localhost:9000/im-server/friend/request?targetUserId=%1&reason=%2")
+    QString url = QString("http://10.196.229.92:9000/im-server/friend/request?targetUserId=%1&reason=%2")
                       .arg(targetId, reason);
 
     // 发送一个空的 JSON 体即可

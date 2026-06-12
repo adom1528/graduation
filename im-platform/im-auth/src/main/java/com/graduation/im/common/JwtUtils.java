@@ -15,7 +15,6 @@ import java.util.Map;
 public class JwtUtils {
 
     // 1. 定义秘钥 (实际开发应该写在配置文件里)
-    // 长度必须足够长，否则会报错。这里随便写一串复杂的
     private static final String SECRET = "MyGraduationProjectSecretKeyForImSystem2026";
     private static final Key KEY = Keys.hmacShaKeyFor(SECRET.getBytes());
 

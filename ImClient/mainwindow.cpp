@@ -11,6 +11,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPainterPath>
+#include <QNetworkProxy> //用于接管网络代理设置
 
 // QT绘图
 static QPixmap makeCircularAvatar(const QPixmap &src, int size)
@@ -64,6 +65,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     //启动WebSocket长连接
     m_webSocket = new QWebSocket();
+    // ==========================================================
+    // 修复：强行禁止 WebSocket 走系统代理，强制局域网直连！
+    // 解决 "The proxy type is invalid for this operation" 报错
+    // ==========================================================
+    QNetworkProxy proxy;
+    proxy.setType(QNetworkProxy::NoProxy);
+    m_webSocket->setProxy(proxy);
 
     connect(m_webSocket, &QWebSocket::connected, this, &MainWindow::onConnected);
     connect(m_webSocket, &QWebSocket::textMessageReceived, this, &MainWindow::onTextMessageReceived);
@@ -77,7 +85,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     QString token = HttpManager::instance()->getToken();
-    QString wsUrl = QString("ws://localhost:9003/im?token=%1").arg(token);
+    QString wsUrl = QString("ws://10.196.229.92:9003/im?token=%1").arg(token);
     m_webSocket->open(QUrl(wsUrl));
 
 }
@@ -119,7 +127,7 @@ void MainWindow::onHeartbeatTimeout()
 
 void MainWindow::fetchFriendList() {
     // 确保路径走 9000 网关
-    QString url = "http://localhost:9000/im-server/friend/list";
+    QString url = "http://10.196.229.92:9000/im-server/friend/list";
 
     HttpManager::instance()->get(url, [=](QJsonObject res) {
         int code = res["code"].toInt();
@@ -127,11 +135,11 @@ void MainWindow::fetchFriendList() {
             QJsonArray data = res["data"].toArray();
 
             m_friendList->clear();
-            // 🌟 核心修复 1：必须清空旧的字典缓存！防止内存泄漏和幽灵数据
+            // 核心修复 1：必须清空旧的字典缓存！防止内存泄漏和幽灵数据
             m_friendMap.clear();
 
             // 暴力置顶 “新朋友” 项
-            QListWidgetItem* newFriendItem = new QListWidgetItem("⭐ 新朋友", m_friendList);
+            QListWidgetItem* newFriendItem = new QListWidgetItem(" 新朋友！", m_friendList);
             newFriendItem->setData(Qt::UserRole, "SYSTEM_NEW_FRIEND");
             newFriendItem->setForeground(QBrush(QColor(255, 140, 0)));
             QFont f = newFriendItem->font();
@@ -193,7 +201,7 @@ void MainWindow::fetchFriendList() {
 
 void MainWindow::fetchChatHistory(QString friendId)
 {
-    QString url = "http://localhost:9000/im-server/chat/history";
+    QString url = "http://10.196.229.92:9000/im-server/chat/history";
     QVariantMap params;
     params["friendId"] = friendId;
 
@@ -260,7 +268,7 @@ void MainWindow::handleSendImageRequest(const QString& targetId) {
         return;
     }
 
-    QString uploadUrl = "http://localhost:9000/im-server/file/upload";
+    QString uploadUrl = "http://10.196.229.92:9000/im-server/file/upload";
 
     // 优雅调用 HttpManager
     HttpManager::instance()->uploadFile(uploadUrl, filePath, [=](QJsonObject rootObj) {
@@ -312,7 +320,7 @@ void MainWindow::handleSendFileRequest(const QString& targetId) {
     QFileInfo fileInfo(filePath);
     QString fileName = fileInfo.fileName();
 
-    QString uploadUrl = "http://localhost:9000/im-server/file/upload";
+    QString uploadUrl = "http://10.196.229.92:9000/im-server/file/upload";
 
     // 优雅调用 HttpManager
     HttpManager::instance()->uploadFile(uploadUrl, filePath, [=](QJsonObject rootObj) {
@@ -628,7 +636,7 @@ void MainWindow::initRightContainer()
 }
 
 // =========================================================================
-// 🌟 右键菜单拦截与渲染
+// 右键菜单拦截与渲染
 // =========================================================================
 void MainWindow::showFriendListContextMenu(const QPoint &pos)
 {
@@ -662,9 +670,6 @@ void MainWindow::showFriendListContextMenu(const QPoint &pos)
     }
 }
 
-// =========================================================================
-// 🌟 终极删除大杀器
-// =========================================================================
 void MainWindow::handleDeleteFriend(const QString& friendId, const QString& nickname)
 {
     // 1. 二次确认防手抖防线（这是涉及删除操作的客户端金科玉律）
@@ -677,24 +682,24 @@ void MainWindow::handleDeleteFriend(const QString& friendId, const QString& nick
         return; // 用户怂了，终止操作
     }
 
-    // 2. 发起夺命网络请求 (⚠️ 依然使用 127.0.0.1 避开 Qt IPv6 解析挂起陷阱)
-    QString url = QString("http://127.0.0.1:9000/im-server/friend/delete?friendId=%1").arg(friendId);
+    // 2. 发起夺命网络请求
+    QString url = QString("http://10.196.229.92:9000/im-server/friend/delete?friendId=%1").arg(friendId);
 
     HttpManager::instance()->postJson(url, QJsonObject(), [=](QJsonObject res) {
         if (res["code"].toInt() == 200) {
             QMessageBox::information(this, "执行成功", "已彻底切断与该用户的羁绊。");
 
-            // 🌟 战后重建 1：静默刷新左侧列表，让这人瞬间消失
+            // 静默刷新左侧列表，让这人瞬间消失
             fetchFriendList();
 
-            // 🌟 战后重建 2：如果此时你恰好停留在和这个人的聊天界面，立刻切回空白页！
-            // 防止你还在对着一个不存在的人发消息导致底层系统崩溃
+            // 如果此时恰好停留在和这个人的聊天界面，立刻切回空白页！
+            // 防止对着一个不存在的人发消息导致底层系统崩溃
             if (m_currentChatFriendId == friendId) {
                 m_rightStack->setCurrentWidget(m_emptyPage);
                 m_currentChatFriendId = "";
             }
 
-            // 🌟 战后重建 3：清理本地字典缓存
+            // 清理本地字典缓存
             m_friendMap.remove(friendId);
 
         } else {

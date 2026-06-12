@@ -191,7 +191,7 @@ void LoginWindow::onBtnLoginClicked()
     reqData["password"] = password;
 
     // 发起登录请求 (注意这里使用的是你配置的 9000 端口网关)
-    HttpManager::instance()->postJson("http://localhost:9000/im-auth/auth/login", reqData,
+    HttpManager::instance()->postJson("http://10.196.229.92:9000/im-auth/auth/login", reqData,
                                       [=](QJsonObject res) {
                                           int code = res["code"].toInt();
                                           if (code == 200) {

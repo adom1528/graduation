@@ -63,7 +63,7 @@ void NewFriendWidget::loadPendingRequests()
 {
     m_requestList->clear(); // 清空旧数据
 
-    QString url = "http://localhost:9000/im-server/friend/request-list";
+    QString url = "http://10.196.229.92:9000/im-server/friend/request-list";
 
     HttpManager::instance()->get(url, [=](QJsonObject res) {
         int code = res["code"].toInt();
@@ -105,7 +105,7 @@ void NewFriendWidget::loadPendingRequests()
                     // 灰底加载占位符
                     avatarLabel->setStyleSheet("background-color: #E0E0E0; border-radius: 25px;");
                     QString safeUrl = avatarUrl;
-                    safeUrl.replace("localhost", "127.0.0.1"); // 避开 IPv6 陷阱
+                    safeUrl.replace("localhost", "10.196.229.92"); // 避开 IPv6 陷阱
 
                     // 异步拉取
                     HttpManager::instance()->downloadImage(safeUrl, [safeLabel, nickname](QPixmap originalImage) {
@@ -163,7 +163,7 @@ void NewFriendWidget::loadPendingRequests()
 void NewFriendWidget::handleRequest(const QString& requestId, int action)
 {
     // 利用我们刚加的 HttpManager::postJson 发送请求，参数拼在 URL 上适配 SpringBoot
-    QString url = QString("http://localhost:9000/im-server/friend/handle-request?requestId=%1&action=%2")
+    QString url = QString("http://10.196.229.92:9000/im-server/friend/handle-request?requestId=%1&action=%2")
                       .arg(requestId).arg(action);
 
     HttpManager::instance()->postJson(url, QJsonObject(), [=](QJsonObject res) {

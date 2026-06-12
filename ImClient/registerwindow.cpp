@@ -31,8 +31,7 @@ RegisterWindow::RegisterWindow(QWidget *parent) :
     QDialog(parent)
 {
     // 3. 预设 MinIO 默认头像 (放前面以便 initUI 能立刻使用)
-    // ⚠️ 使用洗白后的 avatar.png 和 127.0.0.1 避开所有坑
-    currentAvatarUrl = "http://127.0.0.1:19000/im-chat/avatar.png";
+    currentAvatarUrl = "http://10.196.229.92:19000/im-chat/avatar.png";
 
     // 1. 初始化界面与样式
     initUI();
@@ -239,7 +238,7 @@ void RegisterWindow::onBtnAvatarClicked()
     btnAvatar->setText("上传中...");
 
     // 调用文件网关接口 (使用 127.0.0.1 避坑)
-    QString uploadUrl = "http://127.0.0.1:9000/im-server/file/upload";
+    QString uploadUrl = "http://10.196.229.92:9000/im-server/file/upload";
 
     HttpManager::instance()->uploadFile(uploadUrl, filePath, [=](QJsonObject res) {
         int code = res["code"].toInt();
@@ -307,7 +306,7 @@ void RegisterWindow::onBtnSubmitRegisterClicked()
     reqData["avatar"] = currentAvatarUrl;
 
     // 使用 127.0.0.1 避开 IPv6 解析坑
-    HttpManager::instance()->postJson("http://127.0.0.1:9000/im-auth/auth/register", reqData,
+    HttpManager::instance()->postJson("http://10.196.229.92:9000/im-auth/auth/register", reqData,
                                       [=](QJsonObject res) {
                                           int code = res["code"].toInt();
                                           if (code == 200) {

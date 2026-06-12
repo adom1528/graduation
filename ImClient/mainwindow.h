@@ -12,7 +12,7 @@
 #include <QWidget>
 #include <QFrame>
 #include <QTimer>
-#include <QWebsocket>
+#include <QWebSocket>
 #include <QLabel>
 #include <QButtonGroup>
 #include <QMenu>
